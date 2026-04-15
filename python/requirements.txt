@@ -1,0 +1,4 @@
+jax
+equinox
+optax
+pytest
