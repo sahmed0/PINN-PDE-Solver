@@ -33,10 +33,11 @@ def compute_loss(model, collocation_points, ic_points, bc_points,
 
     ic_points and bc_points are expected to be tuples of (inputs, true_values).
 
-    The IC and BC terms are weighted (default 10x) because for a PINN the data
-    constraints have to dominate early training -- otherwise the optimiser
-    happily drives the PDE residual to zero with a trivial / unconstrained
-    solution that ignores the initial and boundary conditions.
+    NOTE: the model now enforces the initial and boundary conditions *exactly*
+    via a hard-constraint ansatz (see model.ParametricPINN.__call__), so the IC
+    and BC terms below are structurally ~0 and contribute no gradient. They are
+    retained as a cheap runtime check that the ansatz is wired up correctly; the
+    PDE residual is what actually trains the network. The weights are harmless.
     """
     # --- 1. Physics Loss (PDE Residual) ---
     # Unpack the collocation points (Shape: N, 3)

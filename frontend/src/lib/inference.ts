@@ -17,6 +17,11 @@ export interface PINNModel {
   activation: string;
   input_names: string[];
   output_names: string[];
+  // Input normalisation: norm[i] = (raw[i] - input_center[i]) / input_scale[i].
+  input_center: number[];
+  input_scale: number[];
+  // Hard-constraint reconstruction applied to the MLP output (see forwardOne).
+  ansatz: string;
   layers: PINNLayer[];
 }
 
@@ -27,18 +32,28 @@ export async function loadModel(url = '/pinn_model.json'): Promise<PINNModel> {
     throw new Error(`Failed to load model from ${url}: ${res.status} ${res.statusText}`);
   }
   const model = (await res.json()) as PINNModel;
-  if (model.format !== 'tanh-mlp') {
+  if (model.format !== 'tanh-mlp-heat-v2') {
     throw new Error(`Unexpected model format: ${model.format}`);
   }
   return model;
 }
 
-// Forward pass for a single input vector. tanh is applied after every layer
-// except the last (which is the linear output u).
+// Forward pass for a single input vector [x, t, alpha] -> u.
+//
+// This must mirror the Python model (see model.ParametricPINN.__call__):
+//   1. Normalise raw inputs to ~[-1, 1] before the MLP.
+//   2. Run the tanh-MLP (tanh after every layer except the linear output).
+//   3. Reconstruct u via the hard-constraint ansatz so the IC/BCs are exact:
+//        u = sin(pi x) + (1 - x^2) * t * N
 function forwardOne(model: PINNModel, input: number[]): number {
-  let activations = input;
-  const layers = model.layers;
+  const x = input[0];
+  const t = input[1];
 
+  // 1. Input normalisation.
+  let activations = input.map((v, i) => (v - model.input_center[i]) / model.input_scale[i]);
+
+  // 2. MLP.
+  const layers = model.layers;
   for (let l = 0; l < layers.length; l++) {
     const { weight, bias } = layers[l];
     const out = new Array<number>(weight.length);
@@ -54,8 +69,10 @@ function forwardOne(model: PINNModel, input: number[]): number {
     }
     activations = out;
   }
+  const n = activations[0];
 
-  return activations[0];
+  // 3. Hard-constraint ansatz.
+  return Math.sin(Math.PI * x) + (1 - x * x) * t * n;
 }
 
 // 1. Grid Generation (mapped to the Python training domains).

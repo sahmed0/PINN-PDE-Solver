@@ -83,11 +83,20 @@ def export_to_json(model, filepath="pinn_model.json"):
     """
     Exports the trained Equinox MLP to a plain JSON file of weights/biases.
 
-    The model is just a tanh-MLP (in=3, out=1), so the browser can run the
-    forward pass directly in a few lines of TypeScript -- no ONNX runtime,
-    TensorFlow or tf2onnx toolchain required. Each entry in "layers" is a
-    Linear layer with `weight` of shape (out, in) and `bias` of shape (out,).
-    `tanh` activation is applied after every layer except the last.
+    The core is a tanh-MLP (in=3, out=1), so the browser can run the forward pass
+    directly in a few lines of TypeScript -- no ONNX runtime, TensorFlow or
+    tf2onnx toolchain required. Each entry in "layers" is a Linear layer with
+    `weight` of shape (out, in) and `bias` of shape (out,). `tanh` activation is
+    applied after every layer except the last.
+
+    Two wrappers around the MLP must be replicated by the consumer (see
+    frontend/src/lib/inference.ts), so they are exported as metadata:
+
+    - "input_center"/"input_scale": normalise raw [x, t, alpha] via
+      (raw - center) / scale before the MLP.
+    - "ansatz" = "heat_dirichlet_sin": reconstruct the temperature from the MLP
+      output N as  u = sin(pi x) + (1 - x^2) * t * N,  which makes the IC/BCs
+      exact. The format string is bumped accordingly so stale consumers fail loudly.
     """
     layers = []
     for layer in model.mlp.layers:
@@ -103,13 +112,18 @@ def export_to_json(model, filepath="pinn_model.json"):
         })
 
     payload = {
-        "format": "tanh-mlp",
+        "format": "tanh-mlp-heat-v2",
         "in_size": 3,
         "out_size": 1,
         "activation": "tanh",
         # Inputs are ordered [x, t, alpha]; output is [u].
         "input_names": ["x", "t", "alpha"],
         "output_names": ["u"],
+        # Input normalisation: norm = (raw - center) / scale, applied before the MLP.
+        "input_center": list(model.input_center),
+        "input_scale": list(model.input_scale),
+        # Hard-constraint reconstruction: u = sin(pi x) + (1 - x^2) * t * N.
+        "ansatz": "heat_dirichlet_sin",
         "layers": layers,
     }
 
