@@ -8,6 +8,7 @@ import equinox as eqx
 import optax
 from model import ParametricPINN
 from physics import compute_loss
+from analytical import relative_l2_error
 
 def generate_training_data(key, num_collocation=1000, num_bc=100, num_ic=100):
     """
@@ -60,23 +61,50 @@ def train_step(model, opt_state, optimizer, collocation_points, ic_points, bc_po
     model = eqx.apply_updates(model, updates)
     return model, opt_state, loss_val
 
-def train(model, key, epochs=1000, lr=1e-3):
-    """Main training loop using Optax."""
-    # Initialize the Adam optimizer
-    optimizer = optax.adam(lr)
+def train(model, key, epochs=20000, lr=1e-3, validate=True,
+          val_alphas=(0.01, 0.05, 0.1), num_collocation=4000):
+    """Main training loop using Optax.
+
+    When `validate` is set, the printed log also reports the mean relative L2
+    error against the analytical solution (averaged over `val_alphas`). The
+    training loss alone is not a meaningful measure of correctness for a PINN --
+    the residual can be small while the field is wrong -- so we track the error
+    versus ground truth as the real progress signal.
+
+    The learning rate follows a cosine decay from `lr` to ~0 over `epochs`. A
+    high constant LR plateaus early on the residual; annealing it lets Adam keep
+    sharpening the fit in late training, which is where most of the accuracy on
+    a smooth problem like this comes from.
+    """
+    # Cosine-annealed Adam: start at `lr`, decay smoothly toward 0 by the last
+    # epoch so late steps fine-tune rather than bounce around the minimum.
+    schedule = optax.cosine_decay_schedule(init_value=lr, decay_steps=epochs)
+    optimizer = optax.adam(schedule)
     opt_state = optimizer.init(eqx.filter(model, eqx.is_array))
-    
-    # Generate static dataset (for dynamic PINNs, one might resample per epoch)
-    collocation_points, ic_points, bc_points = generate_training_data(key)
-    
+
+    # Generate static dataset (for dynamic PINNs, one might resample per epoch).
+    # More collocation points give denser coverage of the 3D (x, t, alpha) domain,
+    # which the residual needs to constrain the solution across the alpha range.
+    collocation_points, ic_points, bc_points = generate_training_data(
+        key, num_collocation=num_collocation
+    )
+
+    def mean_rel_l2(m):
+        errs = [relative_l2_error(m, a) for a in val_alphas]
+        return float(sum(errs) / len(errs))
+
     for epoch in range(epochs):
         model, opt_state, loss = train_step(
             model, opt_state, optimizer, collocation_points, ic_points, bc_points
         )
-        
+
         if epoch % 100 == 0 or epoch == epochs - 1:
-            print(f"Epoch {epoch:04d} | Loss: {loss:.6f}")
-            
+            if validate:
+                print(f"Epoch {epoch:04d} | Loss: {loss:.6f} "
+                      f"| mean rel L2: {mean_rel_l2(model):.3e}")
+            else:
+                print(f"Epoch {epoch:04d} | Loss: {loss:.6f}")
+
     return model
 
 def export_to_json(model, filepath="pinn_model.json"):
