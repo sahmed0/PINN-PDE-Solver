@@ -1,4 +1,5 @@
 jax
 equinox
 optax
+matplotlib
 pytest
