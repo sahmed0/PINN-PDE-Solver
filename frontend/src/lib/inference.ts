@@ -130,3 +130,45 @@ export function reshapeForPlotly(flatOutput: Float32Array, nx: number, nt: numbe
   }
   return zData;
 }
+
+// --- Analytical reference solution -----------------------------------------
+//
+// The training problem (IC u(x,0)=sin(pi x), zero Dirichlet BCs) has the exact
+// closed form  u(x,t) = sin(pi x) * exp(-alpha * pi^2 * t).  Mirrors the Python
+// `analytical.u_exact`, so the browser can show ground truth and a live error
+// field next to the PINN prediction.
+export function uExact(x: number, t: number, alpha: number): number {
+  return Math.sin(Math.PI * x) * Math.exp(-alpha * Math.PI * Math.PI * t);
+}
+
+// Exact field on the same grid as the PINN prediction, shaped [nt][nx].
+export function exactGrid(xVals: number[], tVals: number[], alpha: number): number[][] {
+  return tVals.map((t) => xVals.map((x) => uExact(x, t, alpha)));
+}
+
+// Signed difference field (pred - exact), shaped [nt][nx].
+export function errorGrid(pred: number[][], exact: number[][]): number[][] {
+  return pred.map((row, i) => row.map((v, j) => v - exact[i][j]));
+}
+
+export interface ErrorMetrics {
+  relL2: number; // ||pred - exact||_2 / ||exact||_2
+  linf: number; // max |pred - exact|
+}
+
+// Relative L2 and L-infinity error between two [nt][nx] grids.
+export function computeErrorMetrics(pred: number[][], exact: number[][]): ErrorMetrics {
+  let sqDiff = 0;
+  let sqRef = 0;
+  let linf = 0;
+  for (let i = 0; i < pred.length; i++) {
+    for (let j = 0; j < pred[i].length; j++) {
+      const d = pred[i][j] - exact[i][j];
+      sqDiff += d * d;
+      sqRef += exact[i][j] * exact[i][j];
+      const ad = Math.abs(d);
+      if (ad > linf) linf = ad;
+    }
+  }
+  return { relL2: sqRef > 0 ? Math.sqrt(sqDiff / sqRef) : 0, linf };
+}
