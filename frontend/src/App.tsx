@@ -2,6 +2,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import createPlotlyComponentImport from 'react-plotly.js/factory';
 import Plotly from 'plotly.js-dist-min';
+import type { Data } from 'plotly.js';
 
 // react-plotly.js/factory is CommonJS; under Vite's interop the function can
 // arrive on `.default` instead of as the module's default binding.
@@ -15,7 +16,11 @@ import {
   generateGrid,
   runInference,
   reshapeForPlotly,
+  exactGrid,
+  errorGrid,
+  computeErrorMetrics,
   type PINNModel,
+  type ErrorMetrics,
 } from './lib/inference.ts';
 import styles from './App.module.css';
 
@@ -23,14 +28,32 @@ import styles from './App.module.css';
 const NX = 50;
 const NT = 50;
 
+type ViewMode = 'pinn' | 'exact' | 'error';
+
+interface PlotState {
+  pinn: number[][];
+  exact: number[][];
+  error: number[][];
+  metrics: ErrorMetrics;
+  x: number[];
+  y: number[];
+}
+
+const VIEW_LABELS: Record<ViewMode, string> = {
+  pinn: 'PINN',
+  exact: 'Exact',
+  error: 'Error',
+};
+
 function App() {
   // --- State ---
   const [model, setModel] = useState<PINNModel | null>(null);
   const [alpha, setAlpha] = useState<number>(0.05); // Default thermal diffusivity
   const [isInferencing, setIsInferencing] = useState<boolean>(false);
+  const [view, setView] = useState<ViewMode>('pinn');
 
   // Data for Plotly
-  const [plotData, setPlotData] = useState<{ z: number[][]; x: number[]; y: number[] } | null>(null);
+  const [plotData, setPlotData] = useState<PlotState | null>(null);
 
   // --- 1. Load Model on Mount ---
   useEffect(() => {
@@ -49,7 +72,7 @@ function App() {
     initModel();
   }, []);
 
-  // --- 2. Run Inference ---
+  // --- 2. Run Inference (and compute the analytical reference + error) ---
   // We use useCallback so the function doesn't recreate on every render
   const updatePrediction = useCallback(() => {
     if (!model) return;
@@ -59,13 +82,17 @@ function App() {
       // Step A: Generate the input grid.
       const { inputs, numPoints, xVals, tVals } = generateGrid(NX, NT, alpha);
 
-      // Step B: Run the forward pass.
+      // Step B: Run the PINN forward pass and reshape to [nt][nx].
       const flatOutput = runInference(model, inputs, numPoints);
+      const pinn = reshapeForPlotly(flatOutput, NX, NT);
 
-      // Step C: Reshape for Plotly.
-      const zData = reshapeForPlotly(flatOutput, NX, NT);
+      // Step C: Evaluate the closed-form solution on the same grid, and the
+      // signed error field + scalar metrics (relative L2, L-infinity).
+      const exact = exactGrid(xVals, tVals, alpha);
+      const error = errorGrid(pinn, exact);
+      const metrics = computeErrorMetrics(pinn, exact);
 
-      setPlotData({ z: zData, x: xVals, y: tVals });
+      setPlotData({ pinn, exact, error, metrics, x: xVals, y: tVals });
     } catch (err) {
       console.error("Inference failed:", err);
     } finally {
@@ -78,10 +105,13 @@ function App() {
     updatePrediction();
   }, [updatePrediction]);
 
+  // --- Plot configuration depends on the selected view ---
+  const trace = plotData ? buildTrace(view, plotData) : null;
+
   // --- Render ---
   return (
     <div className={styles.container}>
-      
+
       {/* SIDEBAR: Controls */}
       <aside className={styles.sidebar}>
         <div className={styles.header}>
@@ -105,7 +135,46 @@ function App() {
             disabled={!model}
           />
         </div>
-        
+
+        <div className={styles.controlGroup}>
+          <label><span>View</span></label>
+          <div className={styles.toggle}>
+            {(Object.keys(VIEW_LABELS) as ViewMode[]).map((mode) => (
+              <button
+                key={mode}
+                type="button"
+                className={view === mode ? styles.toggleActive : styles.toggleButton}
+                onClick={() => setView(mode)}
+                disabled={!model}
+              >
+                {VIEW_LABELS[mode]}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Live validation metrics vs. the analytical solution */}
+        <div className={styles.controlGroup}>
+          <label><span>Validation vs. analytical</span></label>
+          <div className={styles.metrics}>
+            <div className={styles.metricRow}>
+              <span>Relative L&#8322;</span>
+              <span className={styles.metricValue}>
+                {plotData ? formatPct(plotData.metrics.relL2) : '—'}
+              </span>
+            </div>
+            <div className={styles.metricRow}>
+              <span>L&#8734; (max abs)</span>
+              <span className={styles.metricValue}>
+                {plotData ? plotData.metrics.linf.toExponential(2) : '—'}
+              </span>
+            </div>
+          </div>
+          <p className={styles.metricNote}>
+            Compared against u(x,t) = sin(&pi;x)&middot;e<sup>&minus;&alpha;&pi;&sup2;t</sup>
+          </p>
+        </div>
+
         <div style={{ marginTop: 'auto', fontSize: '0.8rem', color: '#9ca3af' }}>
           <p>Compute Backend: In-browser tanh-MLP</p>
           <p>Latency: {isInferencing ? "Computing..." : "Idle"}</p>
@@ -116,22 +185,26 @@ function App() {
       <main className={styles.main}>
         {!model ? (
           <div className={styles.loading}>Loading AI Model into Browser...</div>
-        ) : !plotData ? (
+        ) : !plotData || !trace ? (
           <div className={styles.loading}>Running initial inference...</div>
         ) : (
           <Plot
             data={[
               {
-                z: plotData.z,
+                z: trace.z,
                 x: plotData.x, // Space (-1 to 1)
                 y: plotData.y, // Time (0 to 1)
                 type: 'heatmap',
-                colorscale: 'Viridis',
-                colorbar: { title: { text: 'Temp (u)' } }
-              }
+                colorscale: trace.colorscale,
+                zmin: trace.zmin,
+                zmax: trace.zmax,
+                // zmid is a valid Plotly heatmap prop; cast covers older @types.
+                zmid: trace.zmid,
+                colorbar: { title: { text: trace.colorbarTitle } },
+              } as Data,
             ]}
             layout={{
-              title: { text: 'Real-Time Solution Prediction' },
+              title: { text: trace.title },
               xaxis: { title: { text: 'Space (x)' } },
               yaxis: { title: { text: 'Time (t)' } },
               width: 700,
@@ -144,9 +217,58 @@ function App() {
           />
         )}
       </main>
-      
+
     </div>
   );
+}
+
+// Build the Plotly trace settings for the selected view. PINN and Exact share a
+// common Viridis colour range so they are directly comparable; Error uses a
+// diverging scale centred at zero so over/under-prediction is obvious.
+function buildTrace(view: ViewMode, data: PlotState) {
+  if (view === 'error') {
+    const m = data.metrics.linf || 1e-9;
+    return {
+      z: data.error,
+      colorscale: 'RdBu' as const,
+      zmin: -m,
+      zmax: m,
+      zmid: 0,
+      colorbarTitle: 'Δu',
+      title: 'Error (PINN − Exact)',
+    };
+  }
+
+  // Shared range across both physical fields for a fair comparison.
+  const [zmin, zmax] = sharedRange(data.pinn, data.exact);
+  const isPinn = view === 'pinn';
+  return {
+    z: isPinn ? data.pinn : data.exact,
+    colorscale: 'Viridis' as const,
+    zmin,
+    zmax,
+    zmid: undefined as number | undefined,
+    colorbarTitle: 'Temp (u)',
+    title: isPinn ? 'PINN Prediction' : 'Analytical Solution',
+  };
+}
+
+function sharedRange(a: number[][], b: number[][]): [number, number] {
+  let min = Infinity;
+  let max = -Infinity;
+  for (const grid of [a, b]) {
+    for (const row of grid) {
+      for (const v of row) {
+        if (v < min) min = v;
+        if (v > max) max = v;
+      }
+    }
+  }
+  return [min, max];
+}
+
+function formatPct(x: number): string {
+  return `${(x * 100).toFixed(3)}%`;
 }
 
 export default App;
