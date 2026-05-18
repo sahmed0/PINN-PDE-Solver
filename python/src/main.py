@@ -11,6 +11,7 @@ import jax.random as jr
 from model import ParametricPINN
 from train import train, export_to_json
 from analytical import evaluate, format_report
+from inverse import run_inverse_demo
 
 def main():
     print("--- Starting PINN Backend Pipeline ---")
@@ -47,8 +48,18 @@ def main():
     json_filepath = os.path.normpath(os.path.join(public_dir, "pinn_model.json"))
     export_to_json(trained_model, filepath=json_filepath)
 
+    # 5. Inverse problem: recover an unknown alpha from sparse, noisy data.
+    # This is the scientific headline -- a parameter-estimation task a classical
+    # forward solver cannot do directly. Exports its own JSON next to the forward
+    # model so the frontend can display the recovered alpha and the observations.
+    inverse_filepath = os.path.normpath(
+        os.path.join(public_dir, "inverse_model.json")
+    )
+    run_inverse_demo(epochs=2000, export_path=inverse_filepath)
+
     print(f"\n--- Pipeline Complete! ---")
     print(f"Successfully saved: {json_filepath}")
+    print(f"Successfully saved: {inverse_filepath}")
     print("Ready to be loaded into your React application.")
 
 if __name__ == "__main__":
