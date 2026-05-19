@@ -13,6 +13,7 @@ const createPlotlyComponent =
 const Plot = createPlotlyComponent(Plotly);
 import {
   loadModel,
+  loadInverseResult,
   generateGrid,
   runInference,
   reshapeForPlotly,
@@ -21,6 +22,7 @@ import {
   computeErrorMetrics,
   type PINNModel,
   type ErrorMetrics,
+  type InverseResult,
 } from './lib/inference.ts';
 import styles from './App.module.css';
 
@@ -48,6 +50,8 @@ const VIEW_LABELS: Record<ViewMode, string> = {
 function App() {
   // --- State ---
   const [model, setModel] = useState<PINNModel | null>(null);
+  const [inverse, setInverse] = useState<InverseResult | null>(null);
+  const [showObs, setShowObs] = useState<boolean>(false);
   const [alpha, setAlpha] = useState<number>(0.05); // Default thermal diffusivity
   const [isInferencing, setIsInferencing] = useState<boolean>(false);
   const [view, setView] = useState<ViewMode>('pinn');
@@ -70,6 +74,21 @@ function App() {
       }
     }
     initModel();
+  }, []);
+
+  // --- 1b. Load the inverse-problem result (recovered alpha + observations) ---
+  useEffect(() => {
+    async function initInverse() {
+      try {
+        const r = await loadInverseResult('/inverse_model.json');
+        setInverse(r);
+      } catch (err) {
+        // Non-fatal: the forward viewer works without it (run the Python
+        // pipeline to generate public/inverse_model.json).
+        console.error("Failed to load inverse result.", err);
+      }
+    }
+    initInverse();
   }, []);
 
   // --- 2. Run Inference (and compute the analytical reference + error) ---
@@ -175,6 +194,50 @@ function App() {
           </p>
         </div>
 
+        {/* Inverse problem: alpha recovered from sparse, noisy observations */}
+        <div className={styles.controlGroup}>
+          <label><span>Inverse problem</span></label>
+          <div className={styles.metrics}>
+            <div className={styles.metricRow}>
+              <span>True &alpha;</span>
+              <span className={styles.metricValue}>
+                {inverse ? inverse.alpha_true.toFixed(4) : '—'}
+              </span>
+            </div>
+            <div className={styles.metricRow}>
+              <span>Estimated &alpha;</span>
+              <span className={styles.metricValue}>
+                {inverse ? inverse.alpha_est.toFixed(4) : '—'}
+              </span>
+            </div>
+            <div className={styles.metricRow}>
+              <span>Absolute error</span>
+              <span className={styles.metricValue}>
+                {inverse ? Math.abs(inverse.alpha_est - inverse.alpha_true).toExponential(2) : '—'}
+              </span>
+            </div>
+          </div>
+          <label style={{ fontWeight: 400, cursor: inverse ? 'pointer' : 'not-allowed' }}>
+            <span>
+              <input
+                type="checkbox"
+                checked={showObs}
+                onChange={(e) => setShowObs(e.target.checked)}
+                disabled={!inverse}
+                style={{ marginRight: '0.5rem' }}
+              />
+              Show observations
+            </span>
+            <span className={styles.metricValue}>
+              {inverse ? inverse.observations.length : '—'}
+            </span>
+          </label>
+          <p className={styles.metricNote}>
+            &alpha; recovered from {inverse ? inverse.observations.length : 'N'} noisy
+            measurements (overlaid as points).
+          </p>
+        </div>
+
         <div style={{ marginTop: 'auto', fontSize: '0.8rem', color: '#9ca3af' }}>
           <p>Compute Backend: In-browser tanh-MLP</p>
           <p>Latency: {isInferencing ? "Computing..." : "Idle"}</p>
@@ -202,6 +265,25 @@ function App() {
                 zmid: trace.zmid,
                 colorbar: { title: { text: trace.colorbarTitle } },
               } as Data,
+              // Overlay the inverse-problem observations at their (x, t) so it is
+              // visually clear the network inferred alpha from these sparse points.
+              ...(showObs && inverse
+                ? [{
+                    x: inverse.observations.map((o) => o.x),
+                    y: inverse.observations.map((o) => o.t),
+                    type: 'scatter',
+                    mode: 'markers',
+                    name: 'observations',
+                    marker: {
+                      color: '#ffffff',
+                      size: 7,
+                      line: { color: '#111827', width: 1 },
+                      symbol: 'circle',
+                    },
+                    hovertemplate: 'x=%{x:.2f}, t=%{y:.2f}<extra>obs</extra>',
+                    showlegend: false,
+                  } as Data]
+                : []),
             ]}
             layout={{
               title: { text: trace.title },

@@ -75,6 +75,37 @@ function forwardOne(model: PINNModel, input: number[]): number {
   return Math.sin(Math.PI * x) + (1 - x * x) * t * n;
 }
 
+// --- Inverse problem result -------------------------------------------------
+//
+// The Python backend (see inverse.export_inverse_to_json) recovers an unknown
+// diffusivity alpha from sparse, noisy measurements and exports the true and
+// estimated alpha plus the (x, t, u) observations it was trained on. The browser
+// only needs to display these, so no network weights are shipped here.
+export interface InverseObservation {
+  x: number;
+  t: number;
+  u: number;
+}
+
+export interface InverseResult {
+  format: string;
+  alpha_true: number;
+  alpha_est: number;
+  observations: InverseObservation[];
+}
+
+export async function loadInverseResult(url = '/inverse_model.json'): Promise<InverseResult> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to load inverse result from ${url}: ${res.status} ${res.statusText}`);
+  }
+  const result = (await res.json()) as InverseResult;
+  if (result.format !== 'inverse-heat-v1') {
+    throw new Error(`Unexpected inverse result format: ${result.format}`);
+  }
+  return result;
+}
+
 // 1. Grid Generation (mapped to the Python training domains).
 export function generateGrid(
   nx: number,
