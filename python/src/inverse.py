@@ -46,9 +46,18 @@ class InversePINN(eqx.Module):
 
     Unlike the forward model, alpha is not an input. It is a trainable scalar leaf
     (a JAX array, so it participates in autodiff) initialised to a deliberately
-    wrong prior; training drives it toward the true diffusivity. The IC/BCs are
-    enforced softly through the loss here (see compute_inverse_loss) rather than
-    baked in by an ansatz, so the raw MLP output is the temperature.
+    wrong prior; training drives it toward the true diffusivity.
+
+    The same hard-constraint ansatz as the forward ParametricPINN is used here:
+
+        u(x, t) = sin(pi x) + (1 - x^2) * t * N(x, t)
+
+    so the initial condition u(x, 0) = sin(pi x) and the zero Dirichlet BCs at
+    x = +/-1 hold *exactly*, by construction. This matters more for the inverse
+    problem than the forward one: with soft IC/BC penalties the network can trade
+    a small IC/BC misfit for a smaller PDE residual, and alpha silently absorbs
+    the difference, biasing the estimate low. Enforcing them exactly removes that
+    bias and lets the data alone pin down alpha.
     """
     mlp: eqx.nn.MLP
     alpha: jnp.ndarray
@@ -70,10 +79,17 @@ class InversePINN(eqx.Module):
         self.input_scale = INPUT_SCALE
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
+        x_phys, t_phys = x[0], x[1]
+
         center = jnp.asarray(self.input_center)
         scale = jnp.asarray(self.input_scale)
         x_norm = (x - center) / scale
-        u = self.mlp(x_norm)[0]
+
+        n = self.mlp(x_norm)[0]
+
+        # Hard-constraint ansatz: exact IC (t=0 -> sin(pi x)) and zero Dirichlet
+        # BCs (x=+/-1 -> (1 - x^2) = 0), so only the interior dynamics are learnt.
+        u = jnp.sin(jnp.pi * x_phys) + (1.0 - x_phys ** 2) * t_phys * n
         return jnp.reshape(u, (1,))
 
 
@@ -100,6 +116,8 @@ def generate_inverse_data(key, num_collocation=1000, num_bc=100, num_ic=100):
 
     Same domains and IC/BC profile as the forward problem (IC u(x,0)=sin(pi x),
     zero Dirichlet BCs), but every point is just [x, t] -- alpha is not an input.
+    The IC/BC sets are now enforced exactly by the ansatz, so they are retained
+    only as a cheap wiring check in compute_inverse_loss (their loss is ~0).
     """
     k_x, k_t = jr.split(key, 2)
     x_c = jr.uniform(k_x, (num_collocation, 1), minval=-1.0, maxval=1.0)
@@ -145,11 +163,17 @@ def inverse_residual(model, x, t):
 def compute_inverse_loss(model, collocation_points, ic_points, bc_points,
                          obs_points, w_ic=10.0, w_bc=10.0, w_data=100.0):
     """
-    Total inverse loss: PDE residual + soft IC + soft BC + data misfit.
+    Total inverse loss: PDE residual + data misfit (+ harmless IC/BC checks).
 
     The data term is weighted heavily because it is what breaks the degeneracy:
-    the PDE/IC/BC alone admit a family of (u, alpha) pairs, and only the
-    observations pin the field -- and therefore alpha -- to the true solution.
+    the PDE alone admits a family of (u, alpha) pairs, and only the observations
+    pin the field -- and therefore alpha -- to the true solution.
+
+    NOTE: the IC and BC are now enforced *exactly* by the ansatz (see
+    InversePINN.__call__), so loss_ic and loss_bc are structurally ~0 and add no
+    gradient. They are kept as a cheap runtime check that the ansatz is wired up
+    correctly; the weights are harmless. The PDE residual and the data misfit are
+    what actually train the field and alpha.
     """
     x_c, t_c = collocation_points[:, 0], collocation_points[:, 1]
     vmap_residual = jax.vmap(inverse_residual, in_axes=(None, 0, 0))
