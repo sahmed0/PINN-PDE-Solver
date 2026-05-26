@@ -198,11 +198,14 @@ def compute_inverse_loss(model, collocation_points, ic_points, bc_points,
 @eqx.filter_jit
 def inverse_train_step(model, opt_state, optimizer, collocation_points,
                        ic_points, bc_points, obs_points):
-    """Single compiled optimisation step for the inverse problem."""
+    """Single compiled Adam-phase optimisation step for the inverse problem."""
     loss_val, grads = eqx.filter_value_and_grad(compute_inverse_loss)(
         model, collocation_points, ic_points, bc_points, obs_points
     )
-    updates, opt_state = optimizer.update(grads, opt_state, model)
+    # multi_transform routes the per-leaf masks against `params`, so it must see
+    # the same array-only structure as the labels (None at non-array leaves).
+    params = eqx.filter(model, eqx.is_array)
+    updates, opt_state = optimizer.update(grads, opt_state, params)
     model = eqx.apply_updates(model, updates)
     return model, opt_state, loss_val
 
@@ -213,17 +216,66 @@ def _split_keys(key):
     return jr.split(key, 3)  # -> (k_model, k_obs, k_data)
 
 
+def _param_labels(model):
+    """Label every trainable leaf 'mlp', except the alpha scalar -> 'alpha'.
+
+    Used by optax.multi_transform to drive alpha with its own (faster) optimiser:
+    alpha is a single small-magnitude scalar whose gradient is weak, so it needs
+    a larger effective step than the network weights to converge in the same
+    number of epochs.
+    """
+    arrays = eqx.filter(model, eqx.is_array)
+    labels = jax.tree_util.tree_map(lambda _: "mlp", arrays)
+    return eqx.tree_at(lambda m: m.alpha, labels, "alpha")
+
+
+def _lbfgs_polish(model, loss_closure, steps):
+    """Polish (field + alpha) with L-BFGS after Adam.
+
+    Adam gets us into the right basin cheaply; L-BFGS, a quasi-Newton method with
+    a line search, then seats the parameters exactly at the data optimum. For a
+    smooth least-squares objective like this it removes the residual optimisation
+    slack that otherwise keeps the estimate spread above the CRLB floor.
+    """
+    if steps <= 0:
+        return model
+    params, static = eqx.partition(model, eqx.is_array)
+
+    def loss_of_params(p):
+        return loss_closure(eqx.combine(p, static))
+
+    opt = optax.lbfgs()
+    value_and_grad = optax.value_and_grad_from_state(loss_of_params)
+    opt_state = opt.init(params)
+
+    def body(carry, _):
+        params, opt_state = carry
+        value, grad = value_and_grad(params, state=opt_state)
+        updates, opt_state = opt.update(
+            grad, opt_state, params, value=value, grad=grad, value_fn=loss_of_params
+        )
+        params = optax.apply_updates(params, updates)
+        return (params, opt_state), value
+
+    (params, _), _ = jax.lax.scan(body, (params, opt_state), None, length=steps)
+    return eqx.combine(params, static)
+
+
 def train_inverse(alpha_true=0.042, key=None, epochs=2000, lr=1e-3,
-                  alpha_init=0.05, n_obs=50, noise_sigma=0.01,
-                  num_collocation=1000, decay_steps=None):
+                  alpha_lr=5e-3, alpha_init=0.05, n_obs=200, noise_sigma=0.01,
+                  num_collocation=1000, decay_steps=None, lbfgs_steps=300,
+                  verbose=True):
     """
     Fit InversePINN to noisy observations and recover alpha.
 
-    Prints the alpha estimate and data-anchoring loss every 100 epochs. Returns
-    (trained_model, history) where history is a list of
-    {'epoch', 'loss', 'alpha_est', 'alpha_error'} dicts. Adam's per-parameter
-    scaling lets the tiny-magnitude alpha move at roughly `lr` per step despite
-    its small gradient, so a cosine-annealed run converges it cleanly.
+    Two-phase optimisation:
+      1. Adam with a *separate, faster* schedule for alpha (alpha_lr) than for the
+         network weights (lr), both cosine-annealed over `decay_steps`.
+      2. An L-BFGS polish (`lbfgs_steps`) that lands alpha exactly at the data
+         optimum.
+
+    Returns (trained_model, history) where history is a list of
+    {'epoch', 'loss', 'alpha_est', 'alpha_error'} dicts from the Adam phase.
 
     `decay_steps` sets the cosine annealing horizon and defaults to `epochs`.
     Early training briefly overshoots alpha while the field forms; annealing the
@@ -243,8 +295,15 @@ def train_inverse(alpha_true=0.042, key=None, epochs=2000, lr=1e-3,
         k_data, num_collocation=num_collocation
     )
 
-    schedule = optax.cosine_decay_schedule(init_value=lr, decay_steps=decay_steps)
-    optimizer = optax.adam(schedule)
+    # Separate optimisers: weights at `lr`, the lone alpha scalar at `alpha_lr`.
+    mlp_sched = optax.cosine_decay_schedule(init_value=lr, decay_steps=decay_steps)
+    alpha_sched = optax.cosine_decay_schedule(init_value=alpha_lr, decay_steps=decay_steps)
+    # Pass the labelling *function* (not its result): the result is an InversePINN
+    # pytree, which is callable, and optax would mistake it for a label callable.
+    optimizer = optax.multi_transform(
+        {"mlp": optax.adam(mlp_sched), "alpha": optax.adam(alpha_sched)},
+        _param_labels,
+    )
     opt_state = optimizer.init(eqx.filter(model, eqx.is_array))
 
     history = []
@@ -263,8 +322,20 @@ def train_inverse(alpha_true=0.042, key=None, epochs=2000, lr=1e-3,
                 "alpha_est": alpha_est,
                 "alpha_error": alpha_error,
             })
-            print(f"Epoch {epoch:04d} | Loss: {loss:.6f} "
-                  f"| alpha_est: {alpha_est:.5f} | alpha_err: {alpha_error:.5f}")
+            if verbose:
+                print(f"Epoch {epoch:04d} | Loss: {loss:.6f} "
+                      f"| alpha_est: {alpha_est:.5f} | alpha_err: {alpha_error:.5f}")
+
+    # L-BFGS polish to seat alpha exactly at the data optimum.
+    def loss_closure(m):
+        return compute_inverse_loss(m, collocation_points, ic_points,
+                                    bc_points, obs_points)
+
+    model = _lbfgs_polish(model, loss_closure, lbfgs_steps)
+    if verbose:
+        a = float(model.alpha)
+        print(f"L-BFGS polish ({lbfgs_steps} steps) | alpha_est: {a:.5f} "
+              f"| alpha_err: {abs(a - alpha_true):.5f}")
 
     return model, history
 
