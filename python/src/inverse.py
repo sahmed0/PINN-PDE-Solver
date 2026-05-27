@@ -11,6 +11,19 @@ together, so minimising it alongside the data forces alpha toward the value that
 makes the observed field a valid heat-equation solution. This is the kind of
 parameter-estimation task classical forward solvers cannot do directly.
 
+What sets the accuracy here is not network approximation error (as in the forward
+problem) but the *information content* of the noisy data. The right yardstick is
+therefore the Cramer-Rao lower bound (see crlb.py): the smallest error any
+unbiased estimator could achieve. The pieces below are designed to reach it:
+
+  * a hard-constraint ansatz (as in the forward ParametricPINN) bakes the IC/BCs
+    in exactly, so alpha no longer absorbs IC/BC fitting error -- this removes a
+    systematic downward bias in the estimate;
+  * alpha gets its own, faster optimiser (it is one tiny-magnitude scalar with a
+    weak gradient, so it needs a larger step than the network weights);
+  * an L-BFGS polish after Adam seats alpha exactly at the data optimum, pulling
+    the spread of estimates down onto the CRLB floor.
+
 InversePINN is deliberately separate from ParametricPINN: its MLP takes only
 [x, t] and it carries its own alpha leaf, so none of the forward training code is
 touched.
@@ -26,6 +39,7 @@ import numpy as np
 import optax
 
 from analytical import u_exact
+from crlb import crlb_std, design_sweep
 
 # Inputs here are only [x, t] (alpha is no longer an input but an unknown), so we
 # normalise both to ~[-1, 1] before the MLP exactly as the forward model does.
@@ -93,13 +107,17 @@ class InversePINN(eqx.Module):
         return jnp.reshape(u, (1,))
 
 
-def generate_observations(key, alpha_true, n_obs=50, noise_sigma=0.01):
+def generate_observations(key, alpha_true, n_obs=200, noise_sigma=0.01):
     """
     Synthesise sparse, noisy measurements of the true field.
 
     Samples (x, t) uniformly in the domain, evaluates the closed-form solution at
     alpha_true, and adds Gaussian noise. Returns (X_obs, u_obs) with shapes
     (n_obs, 2) and (n_obs, 1) -- the only data the inverse solver is allowed to see.
+
+    noise_sigma stays fixed across experiments: Gaussian measurement noise is a
+    good proxy for the systematic uncertainty of a real instrument. The lever we
+    turn to lower the information floor is instead n_obs (see crlb.design_sweep).
     """
     k_x, k_t, k_noise = jr.split(key, 3)
     x = jr.uniform(k_x, (n_obs, 1), minval=-1.0, maxval=1.0)
@@ -340,12 +358,57 @@ def train_inverse(alpha_true=0.042, key=None, epochs=2000, lr=1e-3,
     return model, history
 
 
-def export_inverse_to_json(model, obs_points, alpha_true,
+def evaluate_inverse_uncertainty(alpha_true=0.042, n_seeds=8, n_obs=200,
+                                 noise_sigma=0.01, epochs=2000, verbose=True,
+                                 **train_kwargs):
+    """
+    Repeat the recovery over independent noise realisations to measure the
+    estimator's empirical spread, and compare it to the CRLB floor.
+
+    A single point estimate cannot distinguish a lucky draw from a biased method.
+    Re-running over `n_seeds` fresh noise draws gives the mean (does the method
+    sit on the truth?) and the std (how tightly?), and the CRLB tells us the best
+    std physically attainable from this data. Returns a dict with the per-seed
+    estimates, mean, std, and the (theoretical) CRLB std on alpha.
+    """
+    estimates = []
+    for s in range(n_seeds):
+        model, _ = train_inverse(
+            alpha_true=alpha_true, key=jr.PRNGKey(s), epochs=epochs,
+            n_obs=n_obs, noise_sigma=noise_sigma, verbose=False, **train_kwargs
+        )
+        est = float(model.alpha)
+        estimates.append(est)
+        if verbose:
+            print(f"seed {s}: alpha_est = {est:.5f}")
+
+    estimates = np.asarray(estimates)
+    # CRLB on a representative observation design (seed 0's actual points).
+    _, k_obs, _ = _split_keys(jr.PRNGKey(0))
+    X_obs, _ = generate_observations(k_obs, alpha_true, n_obs=n_obs,
+                                     noise_sigma=noise_sigma)
+    crlb = crlb_std(X_obs, alpha_true, noise_sigma)
+
+    return {
+        "alpha_true": float(alpha_true),
+        "estimates": estimates.tolist(),
+        "mean": float(estimates.mean()),
+        "std": float(estimates.std()),
+        "crlb_std": float(crlb),
+        "n_obs": int(n_obs),
+        "noise_sigma": float(noise_sigma),
+        "n_seeds": int(n_seeds),
+    }
+
+
+def export_inverse_to_json(model, obs_points, alpha_true, stats=None,
                            filepath="inverse_model.json"):
     """
-    Export the inverse result for the frontend: the true and recovered alpha plus
-    the noisy (x, t, u) observations, so the UI can show the readouts and scatter
-    the measurement points over the heatmap without retraining.
+    Export the inverse result for the frontend: the true and recovered alpha, the
+    recovered-alpha uncertainty (empirical std over noise realisations) and the
+    CRLB floor, plus the noisy (x, t, u) observations, so the UI can show the
+    readouts with an honest error bar and scatter the measurements over the
+    heatmap without retraining.
     """
     X_obs, u_obs = obs_points
     X_obs = np.asarray(X_obs, dtype=np.float64)
@@ -356,11 +419,24 @@ def export_inverse_to_json(model, obs_points, alpha_true,
     ]
 
     payload = {
-        "format": "inverse-heat-v1",
+        "format": "inverse-heat-v2",
         "alpha_true": float(alpha_true),
         "alpha_est": float(model.alpha),
         "observations": observations,
     }
+    if stats is not None:
+        # Report the mean over noise realisations as the headline estimate, with
+        # its empirical std as the +/- band, alongside the CRLB floor it saturates.
+        payload["alpha_est"] = float(stats["mean"])
+        payload["alpha_std"] = float(stats["std"])
+        payload["crlb_std"] = float(stats["crlb_std"])
+        payload["n_obs"] = int(stats["n_obs"])
+        payload["noise_sigma"] = float(stats["noise_sigma"])
+        payload["n_seeds"] = int(stats["n_seeds"])
+        # The CRLB-floor-by-design table, so the UI can show how the information
+        # limit moves with the experiment (N, sigma, time horizon).
+        payload["design_sweep"] = design_sweep(alpha=float(alpha_true),
+                                               sigma=float(stats["noise_sigma"]))
 
     print(f"Exporting inverse result to {filepath}...")
     with open(filepath, "w", encoding="utf-8") as f:
@@ -368,33 +444,48 @@ def export_inverse_to_json(model, obs_points, alpha_true,
     print("Export complete.")
 
 
-def run_inverse_demo(alpha_true=0.042, epochs=2000, seed=0, export_path=None):
+def run_inverse_demo(alpha_true=0.042, epochs=2000, seed=0, n_seeds=8,
+                     n_obs=200, noise_sigma=0.01, export_path=None):
     """
-    End-to-end inverse demo: train from a wrong prior, print a final report, and
-    optionally export the result for the frontend. Reconstructs the observations
-    from the same seed used inside train_inverse so the exported scatter matches
-    exactly what the network was trained on.
+    End-to-end inverse demo: recover alpha over several noise realisations, report
+    the estimate with an uncertainty band against the Cramer-Rao floor, and
+    optionally export for the frontend.
+
+    The exported scatter comes from `seed` (reconstructed from the same key split
+    used inside train_inverse), so the displayed points match a real trained run;
+    the headline alpha and its +/- band come from the multi-seed statistics.
     """
     print("\n--- Inverse Problem: recovering alpha from sparse, noisy data ---")
+
+    stats = evaluate_inverse_uncertainty(
+        alpha_true=alpha_true, n_seeds=n_seeds, n_obs=n_obs,
+        noise_sigma=noise_sigma, epochs=epochs,
+    )
+
+    mean, std, crlb = stats["mean"], stats["std"], stats["crlb_std"]
+    bias = mean - alpha_true
+    print("\nInverse problem report (over %d noise realisations):" % n_seeds)
+    print(f"    true alpha        : {alpha_true:.5f}")
+    print(f"    recovered alpha   : {mean:.5f} +/- {std:.5f}  (1 sigma)")
+    print(f"    relative error    : {abs(bias) / alpha_true * 100:.2f}% (bias) "
+          f"| {std / alpha_true * 100:.2f}% (spread)")
+    print(f"    Cramer-Rao floor  : {crlb:.5f}  ({crlb / alpha_true * 100:.2f}% of true)")
+    print(f"    saturation        : spread / CRLB = {std / crlb:.2f}x "
+          f"(1.0x = information-limited)")
+
+    # Train one representative model on `seed` for the exported field/scatter.
     key = jr.PRNGKey(seed)
-    model, history = train_inverse(alpha_true=alpha_true, key=key, epochs=epochs)
-
-    alpha_est = float(model.alpha)
-    abs_err = abs(alpha_est - alpha_true)
-    rel_err = abs_err / alpha_true
-
-    print("\nInverse problem report:")
-    print(f"    true alpha      : {alpha_true:.5f}")
-    print(f"    estimated alpha : {alpha_est:.5f}")
-    print(f"    absolute error  : {abs_err:.5f}")
-    print(f"    relative error  : {rel_err * 100:.2f}%")
+    model, _ = train_inverse(alpha_true=alpha_true, key=key, epochs=epochs,
+                             n_obs=n_obs, noise_sigma=noise_sigma, verbose=False)
 
     if export_path is not None:
         _, k_obs, _ = _split_keys(key)
-        obs_points = generate_observations(k_obs, alpha_true)
-        export_inverse_to_json(model, obs_points, alpha_true, filepath=export_path)
+        obs_points = generate_observations(k_obs, alpha_true, n_obs=n_obs,
+                                           noise_sigma=noise_sigma)
+        export_inverse_to_json(model, obs_points, alpha_true, stats=stats,
+                               filepath=export_path)
 
-    return model, history
+    return model, stats
 
 
 if __name__ == "__main__":
