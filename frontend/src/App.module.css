@@ -16,6 +16,19 @@
   flex-direction: column;
   gap: 1.5rem;
   box-shadow: 2px 0 5px rgba(0,0,0,0.02);
+  height: 100vh;
+  overflow-y: auto;
+}
+
+.tabBar {
+  position: absolute;
+  top: 1vh;
+  left: 50vw;
+  z-index: 2;
+}
+
+.tabBar button {
+    padding: 1rem;
 }
 
 .header {
@@ -119,6 +132,47 @@
   font-size: 0.75rem;
   color: #9ca3af;
   margin: 0.25rem 0 0;
+}
+
+/* CRLB floor-by-design table (inverse tab) */
+.sweepTable {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.8125rem;
+  font-variant-numeric: tabular-nums;
+  background-color: #f9fafb;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.sweepTable th {
+  text-align: right;
+  font-weight: 500;
+  color: #6b7280;
+  padding: 0.4rem 0.6rem;
+  border-bottom: 1px solid #e5e7eb;
+}
+
+.sweepTable td {
+  text-align: right;
+  color: #111827;
+  padding: 0.35rem 0.6rem;
+}
+
+.sweepTable th:first-child,
+.sweepTable td:first-child {
+  text-align: left;
+}
+
+.sweepTable tbody tr:not(:last-child) td {
+  border-bottom: 1px solid #f1f3f5;
+}
+
+.sweepActive td {
+  background-color: #eff6ff;
+  color: #1d4ed8;
+  font-weight: 600;
 }
 
 .main {

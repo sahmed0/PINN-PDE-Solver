@@ -31,6 +31,7 @@ const NX = 50;
 const NT = 50;
 
 type ViewMode = 'pinn' | 'exact' | 'error';
+type TabMode = 'forward' | 'inverse';
 
 interface PlotState {
   pinn: number[][];
@@ -51,10 +52,16 @@ function App() {
   // --- State ---
   const [model, setModel] = useState<PINNModel | null>(null);
   const [inverse, setInverse] = useState<InverseResult | null>(null);
-  const [showObs, setShowObs] = useState<boolean>(false);
+  const [tab, setTab] = useState<TabMode>('forward');
+  const [showObs, setShowObs] = useState<boolean>(true);
   const [alpha, setAlpha] = useState<number>(0.05); // Default thermal diffusivity
   const [isInferencing, setIsInferencing] = useState<boolean>(false);
   const [view, setView] = useState<ViewMode>('pinn');
+
+  // On the inverse tab the heatmap is rendered at the *recovered* alpha (so the
+  // overlaid observations sit on the field they were inferred from); on the
+  // forward tab it follows the slider.
+  const displayAlpha = tab === 'inverse' && inverse ? inverse.alpha_est : alpha;
 
   // Data for Plotly
   const [plotData, setPlotData] = useState<PlotState | null>(null);
@@ -99,7 +106,7 @@ function App() {
     setIsInferencing(true);
     try {
       // Step A: Generate the input grid.
-      const { inputs, numPoints, xVals, tVals } = generateGrid(NX, NT, alpha);
+      const { inputs, numPoints, xVals, tVals } = generateGrid(NX, NT, displayAlpha);
 
       // Step B: Run the PINN forward pass and reshape to [nt][nx].
       const flatOutput = runInference(model, inputs, numPoints);
@@ -107,7 +114,7 @@ function App() {
 
       // Step C: Evaluate the closed-form solution on the same grid, and the
       // signed error field + scalar metrics (relative L2, L-infinity).
-      const exact = exactGrid(xVals, tVals, alpha);
+      const exact = exactGrid(xVals, tVals, displayAlpha);
       const error = errorGrid(pinn, exact);
       const metrics = computeErrorMetrics(pinn, exact);
 
@@ -117,7 +124,7 @@ function App() {
     } finally {
       setIsInferencing(false);
     }
-  }, [model, alpha]);
+  }, [model, displayAlpha]);
 
   // Trigger prediction when the model loads or alpha changes
   useEffect(() => {
@@ -138,23 +145,22 @@ function App() {
           <p>Physics-Informed Neural Network (1D Heat Equation)</p>
         </div>
 
-        <div className={styles.controlGroup}>
-          <label>
-            <span>Thermal Diffusivity (&alpha;)</span>
-            <span>{alpha.toFixed(3)}</span>
-          </label>
-          <input
-            type="range"
-            min="0.01"
-            max="0.1"
-            step="0.001"
-            value={alpha}
-            onChange={(e) => setAlpha(parseFloat(e.target.value))}
-            className={styles.slider}
-            disabled={!model}
-          />
+        {/* Forward / Inverse problem tabs */}
+        <div className={`${styles.toggle} ${styles.tabBar}`}>
+          {(['forward', 'inverse'] as TabMode[]).map((mode) => (
+            <button
+              key={mode}
+              type="button"
+              className={tab === mode ? styles.toggleActive : styles.toggleButton}
+              onClick={() => setTab(mode)}
+              disabled={!model}
+            >
+              {mode === 'forward' ? 'Forward' : 'Inverse'}
+            </button>
+          ))}
         </div>
 
+        {/* View toggle (shared by both tabs) */}
         <div className={styles.controlGroup}>
           <label><span>View</span></label>
           <div className={styles.toggle}>
@@ -172,71 +178,144 @@ function App() {
           </div>
         </div>
 
-        {/* Live validation metrics vs. the analytical solution */}
-        <div className={styles.controlGroup}>
-          <label><span>Validation vs. analytical</span></label>
-          <div className={styles.metrics}>
-            <div className={styles.metricRow}>
-              <span>Relative L&#8322;</span>
-              <span className={styles.metricValue}>
-                {plotData ? formatPct(plotData.metrics.relL2) : '—'}
-              </span>
-            </div>
-            <div className={styles.metricRow}>
-              <span>L&#8734; (max abs)</span>
-              <span className={styles.metricValue}>
-                {plotData ? plotData.metrics.linf.toExponential(2) : '—'}
-              </span>
-            </div>
-          </div>
-          <p className={styles.metricNote}>
-            Compared against u(x,t) = sin(&pi;x)&middot;e<sup>&minus;&alpha;&pi;&sup2;t</sup>
-          </p>
-        </div>
-
-        {/* Inverse problem: alpha recovered from sparse, noisy observations */}
-        <div className={styles.controlGroup}>
-          <label><span>Inverse problem</span></label>
-          <div className={styles.metrics}>
-            <div className={styles.metricRow}>
-              <span>True &alpha;</span>
-              <span className={styles.metricValue}>
-                {inverse ? inverse.alpha_true.toFixed(4) : '—'}
-              </span>
-            </div>
-            <div className={styles.metricRow}>
-              <span>Estimated &alpha;</span>
-              <span className={styles.metricValue}>
-                {inverse ? inverse.alpha_est.toFixed(4) : '—'}
-              </span>
-            </div>
-            <div className={styles.metricRow}>
-              <span>Absolute error</span>
-              <span className={styles.metricValue}>
-                {inverse ? Math.abs(inverse.alpha_est - inverse.alpha_true).toExponential(2) : '—'}
-              </span>
-            </div>
-          </div>
-          <label style={{ fontWeight: 400, cursor: inverse ? 'pointer' : 'not-allowed' }}>
-            <span>
+        {tab === 'forward' && (
+          <>
+            <div className={styles.controlGroup}>
+              <label>
+                <span>Thermal Diffusivity (&alpha;)</span>
+                <span>{alpha.toFixed(3)}</span>
+              </label>
               <input
-                type="checkbox"
-                checked={showObs}
-                onChange={(e) => setShowObs(e.target.checked)}
-                disabled={!inverse}
-                style={{ marginRight: '0.5rem' }}
+                type="range"
+                min="0.01"
+                max="0.1"
+                step="0.001"
+                value={alpha}
+                onChange={(e) => setAlpha(parseFloat(e.target.value))}
+                className={styles.slider}
+                disabled={!model}
               />
-              Show observations
-            </span>
-            <span className={styles.metricValue}>
-              {inverse ? inverse.observations.length : '—'}
-            </span>
-          </label>
-          <p className={styles.metricNote}>
-            &alpha; recovered from {inverse ? inverse.observations.length : 'N'} noisy
-            measurements (overlaid as points).
-          </p>
-        </div>
+            </div>
+
+            {/* Live validation metrics vs. the analytical solution */}
+            <div className={styles.controlGroup}>
+              <label><span>Validation vs. analytical</span></label>
+              <div className={styles.metrics}>
+                <div className={styles.metricRow}>
+                  <span>Relative L&#8322;</span>
+                  <span className={styles.metricValue}>
+                    {plotData ? formatPct(plotData.metrics.relL2) : '-'}
+                  </span>
+                </div>
+                <div className={styles.metricRow}>
+                  <span>L&#8734; (max abs)</span>
+                  <span className={styles.metricValue}>
+                    {plotData ? plotData.metrics.linf.toExponential(2) : '-'}
+                  </span>
+                </div>
+              </div>
+              <p className={styles.metricNote}>
+                Compared against u(x,t) = sin(&pi;x)&middot;e<sup>&minus;&alpha;&pi;&sup2;t</sup>
+              </p>
+            </div>
+          </>
+        )}
+
+        {tab === 'inverse' && (
+          <>
+            {/* Inverse problem: alpha recovered from sparse, noisy observations */}
+            <div className={styles.controlGroup}>
+              <label><span>Recovered &alpha;</span></label>
+              <div className={styles.metrics}>
+                <div className={styles.metricRow}>
+                  <span>True &alpha;</span>
+                  <span className={styles.metricValue}>
+                    {inverse ? inverse.alpha_true.toFixed(4) : '-'}
+                  </span>
+                </div>
+                <div className={styles.metricRow}>
+                  <span>Estimate (1&sigma;)</span>
+                  <span className={styles.metricValue}>
+                    {inverse
+                      ? inverse.alpha_std != null
+                        ? `${inverse.alpha_est.toFixed(4)} ± ${inverse.alpha_std.toFixed(4)}`
+                        : inverse.alpha_est.toFixed(4)
+                      : '-'}
+                  </span>
+                </div>
+                <div className={styles.metricRow}>
+                  <span>Cramér–Rao floor</span>
+                  <span className={styles.metricValue}>
+                    {inverse && inverse.crlb_std != null ? `± ${inverse.crlb_std.toFixed(4)}` : '-'}
+                  </span>
+                </div>
+              </div>
+              <label style={{ fontWeight: 400, cursor: inverse ? 'pointer' : 'not-allowed' }}>
+                <span>
+                  <input
+                    type="checkbox"
+                    checked={showObs}
+                    onChange={(e) => setShowObs(e.target.checked)}
+                    disabled={!inverse}
+                    style={{ marginRight: '0.5rem' }}
+                  />
+                  Show observations
+                </span>
+                <span className={styles.metricValue}>
+                  {inverse ? inverse.observations.length : '-'}
+                </span>
+              </label>
+              <p className={styles.metricNote}>
+                &alpha; recovered from {inverse ? inverse.observations.length : 'N'} noisy
+                measurements (overlaid as points). The ± band is the 1σ spread over
+                {inverse?.n_seeds ? ` ${inverse.n_seeds}` : ''} noise realisations;
+                the Cramér–Rao floor is the best precision any estimator could achieve
+                from this data
+                {inverse && inverse.crlb_std != null && inverse.alpha_std != null
+                  ? ` (we reach ${(inverse.alpha_std / inverse.crlb_std).toFixed(1)}× the floor).`
+                  : '.'}
+              </p>
+            </div>
+
+            {/* CRLB floor by experiment design */}
+            {inverse?.design_sweep && (
+              <div className={styles.controlGroup}>
+                <label><span>CRLB floor by experiment</span></label>
+                <table className={styles.sweepTable}>
+                  <thead>
+                    <tr>
+                      <th>N</th>
+                      <th>&sigma;</th>
+                      <th>t&#8804;</th>
+                      <th>Floor</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {inverse.design_sweep.map((r, i) => {
+                      const active =
+                        r.n_obs === inverse.n_obs &&
+                        Math.abs(r.sigma - (inverse.noise_sigma ?? r.sigma)) < 1e-9 &&
+                        Math.abs(r.t_max - 1.0) < 1e-9;
+                      return (
+                        <tr key={i} className={active ? styles.sweepActive : undefined}>
+                          <td>{r.n_obs}</td>
+                          <td>{r.sigma}</td>
+                          <td>{r.t_max}</td>
+                          <td>{r.rel_pct.toFixed(2)}%</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+                <p className={styles.metricNote}>
+                  The information floor (best achievable 1σ on α, as % of α) versus
+                  the measurement design. The highlighted row is the live experiment;
+                  more points, lower noise, or a longer time window all lower it.
+                </p>
+              </div>
+            )}
+          </>
+        )}
 
         <div style={{ marginTop: 'auto', fontSize: '0.8rem', color: '#9ca3af' }}>
           <p>Compute Backend: In-browser tanh-MLP</p>
@@ -267,7 +346,7 @@ function App() {
               } as Data,
               // Overlay the inverse-problem observations at their (x, t) so it is
               // visually clear the network inferred alpha from these sparse points.
-              ...(showObs && inverse
+              ...(showObs && inverse && tab === 'inverse'
                 ? [{
                     x: inverse.observations.map((o) => o.x),
                     y: inverse.observations.map((o) => o.t),
