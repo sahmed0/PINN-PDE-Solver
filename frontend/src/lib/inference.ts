@@ -87,10 +87,29 @@ export interface InverseObservation {
   u: number;
 }
 
+// One row of the Cramer-Rao floor-by-design table: the expected relative CRLB
+// (% of alpha) for an experiment with n_obs points, noise sigma, and time
+// horizon t_max. Shows how the information limit moves with the measurement.
+export interface DesignRow {
+  n_obs: number;
+  sigma: number;
+  t_max: number;
+  rel_pct: number;
+}
+
 export interface InverseResult {
   format: string;
   alpha_true: number;
-  alpha_est: number;
+  alpha_est: number; // mean estimate over the noise realisations
+  // Uncertainty fields (v2+): empirical 1-sigma spread of the estimate over
+  // independent noise draws, and the Cramer-Rao lower bound it is measured
+  // against (the best std physically attainable from this noisy data).
+  alpha_std?: number;
+  crlb_std?: number;
+  n_obs?: number;
+  noise_sigma?: number;
+  n_seeds?: number;
+  design_sweep?: DesignRow[];
   observations: InverseObservation[];
 }
 
@@ -100,7 +119,7 @@ export async function loadInverseResult(url = '/inverse_model.json'): Promise<In
     throw new Error(`Failed to load inverse result from ${url}: ${res.status} ${res.statusText}`);
   }
   const result = (await res.json()) as InverseResult;
-  if (result.format !== 'inverse-heat-v1') {
+  if (result.format !== 'inverse-heat-v2') {
     throw new Error(`Unexpected inverse result format: ${result.format}`);
   }
   return result;
