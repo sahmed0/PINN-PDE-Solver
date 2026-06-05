@@ -222,3 +222,73 @@ export function computeErrorMetrics(pred: number[][], exact: number[][]): ErrorM
   }
   return { relL2: sqRef > 0 ? Math.sqrt(sqDiff / sqRef) : 0, linf };
 }
+
+// --- Burgers' equation -----------------------------------------------------
+//
+// A second, nonlinear PDE (u_t + u u_x = nu u_xx). Like the heat model it ships
+// as a tanh-MLP of JSON weights, but the inputs are [x, t] (nu is fixed) and the
+// ansatz uses the -sin initial profile. There is no closed form, so the Python
+// backend embeds a method-of-lines reference field and the rel_l2 / linf it
+// scored against it; the browser only re-runs the forward pass for display.
+export interface BurgersModel {
+  format: string; // "tanh-mlp-burgers-v1"
+  in_size: number;
+  out_size: number;
+  activation: string;
+  input_center: number[];
+  input_scale: number[];
+  ansatz: string; // "burgers_dirichlet_negsin"
+  nu: number;
+  reference: { x: number[]; t: number[]; u: number[][] };
+  rel_l2: number;
+  linf: number;
+  layers: PINNLayer[];
+}
+
+export async function loadBurgersModel(url = '/burgers_model.json'): Promise<BurgersModel> {
+  const res = await fetch(url);
+  if (!res.ok) {
+    throw new Error(`Failed to load Burgers' model from ${url}: ${res.status} ${res.statusText}`);
+  }
+  const model = (await res.json()) as BurgersModel;
+  if (model.format !== 'tanh-mlp-burgers-v1') {
+    throw new Error(`Unexpected Burgers' model format: ${model.format}`);
+  }
+  return model;
+}
+
+// Forward pass for a single [x, t] -> u. Mirrors forwardOne but with 2 inputs
+// and the Burgers' ansatz  u = -sin(pi x) + (1 - x^2) * t * N.
+function forwardBurgers(model: BurgersModel, input: number[]): number {
+  const x = input[0];
+  const t = input[1];
+
+  let activations = input.map((v, i) => (v - model.input_center[i]) / model.input_scale[i]);
+
+  const layers = model.layers;
+  for (let l = 0; l < layers.length; l++) {
+    const { weight, bias } = layers[l];
+    const out = new Array<number>(weight.length);
+    for (let i = 0; i < weight.length; i++) {
+      const row = weight[i];
+      let sum = bias[i];
+      for (let j = 0; j < row.length; j++) {
+        sum += row[j] * activations[j];
+      }
+      out[i] = l < layers.length - 1 ? Math.tanh(sum) : sum;
+    }
+    activations = out;
+  }
+  const n = activations[0];
+
+  return -Math.sin(Math.PI * x) + (1 - x * x) * t * n;
+}
+
+// Evaluate the PINN over the full (nt x nx) grid, returning [nt][nx].
+export function runBurgersInference(
+  model: BurgersModel,
+  xVals: number[],
+  tVals: number[]
+): number[][] {
+  return tVals.map((t) => xVals.map((x) => forwardBurgers(model, [x, t])));
+}
