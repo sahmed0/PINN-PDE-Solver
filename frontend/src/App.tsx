@@ -14,6 +14,8 @@ const Plot = createPlotlyComponent(Plotly);
 import {
   loadModel,
   loadInverseResult,
+  loadBurgersModel,
+  runBurgersInference,
   generateGrid,
   runInference,
   reshapeForPlotly,
@@ -23,6 +25,7 @@ import {
   type PINNModel,
   type ErrorMetrics,
   type InverseResult,
+  type BurgersModel,
 } from './lib/inference.ts';
 import styles from './App.module.css';
 
@@ -31,7 +34,7 @@ const NX = 50;
 const NT = 50;
 
 type ViewMode = 'pinn' | 'exact' | 'error';
-type TabMode = 'forward' | 'inverse';
+type TabMode = 'forward' | 'inverse' | 'burgers';
 
 interface PlotState {
   pinn: number[][];
@@ -52,6 +55,10 @@ function App() {
   // --- State ---
   const [model, setModel] = useState<PINNModel | null>(null);
   const [inverse, setInverse] = useState<InverseResult | null>(null);
+  const [burgersModel, setBurgersModel] = useState<BurgersModel | null>(null);
+  // The Burgers' fields don't depend on any slider (nu is fixed), so they are
+  // computed once when the model loads rather than reactively on alpha changes.
+  const [burgersPlotData, setBurgersPlotData] = useState<PlotState | null>(null);
   const [tab, setTab] = useState<TabMode>('forward');
   const [showObs, setShowObs] = useState<boolean>(true);
   const [alpha, setAlpha] = useState<number>(0.05); // Default thermal diffusivity
@@ -98,6 +105,29 @@ function App() {
     initInverse();
   }, []);
 
+  // --- 1c. Load the Burgers' model and compute its fields once on mount ---
+  useEffect(() => {
+    async function initBurgers() {
+      try {
+        const m = await loadBurgersModel('/burgers_model.json');
+        setBurgersModel(m);
+
+        // The "Exact" field here is the embedded method-of-lines reference, not
+        // a closed form. PINN/error fields are derived from it on the same grid.
+        const xVals = m.reference.x;
+        const tVals = m.reference.t;
+        const pinn = runBurgersInference(m, xVals, tVals);
+        const exact = m.reference.u;
+        const error = errorGrid(pinn, exact);
+        const metrics = computeErrorMetrics(pinn, exact);
+        setBurgersPlotData({ pinn, exact, error, metrics, x: xVals, y: tVals });
+      } catch (err) {
+        console.error("Failed to load Burgers' model.", err);
+      }
+    }
+    initBurgers();
+  }, []);
+
   // --- 2. Run Inference (and compute the analytical reference + error) ---
   // We use useCallback so the function doesn't recreate on every render
   const updatePrediction = useCallback(() => {
@@ -132,7 +162,14 @@ function App() {
   }, [updatePrediction]);
 
   // --- Plot configuration depends on the selected view ---
-  const trace = plotData ? buildTrace(view, plotData) : null;
+  // The Burgers' tab draws from its own precomputed fields; both share the same
+  // buildTrace/sharedRange/RdBu pattern. Its "Exact" is a numerical reference.
+  const activePlot = tab === 'burgers' ? burgersPlotData : plotData;
+  const trace = activePlot
+    ? tab === 'burgers'
+      ? buildTrace(view, activePlot, 'Numerical Reference', 'Velocity (u)')
+      : buildTrace(view, activePlot)
+    : null;
 
   // --- Render ---
   return (
@@ -145,17 +182,17 @@ function App() {
           <p>Physics-Informed Neural Network (1D Heat Equation)</p>
         </div>
 
-        {/* Forward / Inverse problem tabs */}
+        {/* Forward / Inverse / Burgers' problem tabs */}
         <div className={`${styles.toggle} ${styles.tabBar}`}>
-          {(['forward', 'inverse'] as TabMode[]).map((mode) => (
+          {(['forward', 'inverse', 'burgers'] as TabMode[]).map((mode) => (
             <button
               key={mode}
               type="button"
               className={tab === mode ? styles.toggleActive : styles.toggleButton}
               onClick={() => setTab(mode)}
-              disabled={!model}
+              disabled={mode === 'burgers' ? !burgersModel : !model}
             >
-              {mode === 'forward' ? 'Forward' : 'Inverse'}
+              {mode === 'forward' ? 'Forward' : mode === 'inverse' ? 'Inverse' : "Burgers'"}
             </button>
           ))}
         </div>
@@ -170,7 +207,7 @@ function App() {
                 type="button"
                 className={view === mode ? styles.toggleActive : styles.toggleButton}
                 onClick={() => setView(mode)}
-                disabled={!model}
+                disabled={tab === 'burgers' ? !burgersModel : !model}
               >
                 {VIEW_LABELS[mode]}
               </button>
@@ -317,6 +354,45 @@ function App() {
           </>
         )}
 
+        {tab === 'burgers' && (
+          <>
+            <div className={styles.controlGroup}>
+              <label>
+                <span>Viscosity (&nu;)</span>
+                <span>{burgersModel ? burgersModel.nu.toExponential(4) : '-'}</span>
+              </label>
+              <p className={styles.metricNote}>
+                Fixed at &nu; = 0.01/&pi; (Raissi et al. 2019). A near-shock forms
+                around t &asymp; 0.7 where the field steepens sharply.
+              </p>
+            </div>
+
+            {/* Accuracy vs. the method-of-lines reference (computed in Python) */}
+            <div className={styles.controlGroup}>
+              <label><span>Validation vs. reference</span></label>
+              <div className={styles.metrics}>
+                <div className={styles.metricRow}>
+                  <span>Relative L&#8322;</span>
+                  <span className={styles.metricValue}>
+                    {burgersModel ? formatPct(burgersModel.rel_l2) : '-'}
+                  </span>
+                </div>
+                <div className={styles.metricRow}>
+                  <span>L&#8734; (max abs)</span>
+                  <span className={styles.metricValue}>
+                    {burgersModel ? burgersModel.linf.toExponential(2) : '-'}
+                  </span>
+                </div>
+              </div>
+              <p className={styles.metricNote}>
+                u<sub>t</sub> + u&middot;u<sub>x</sub> = &nu;&middot;u<sub>xx</sub>.
+                &ldquo;Exact&rdquo; here is a method-of-lines numerical reference
+                (512-point grid integrated in time), not a closed form.
+              </p>
+            </div>
+          </>
+        )}
+
         <div style={{ marginTop: 'auto', fontSize: '0.8rem', color: '#9ca3af' }}>
           <p>Compute Backend: In-browser tanh-MLP</p>
           <p>Latency: {isInferencing ? "Computing..." : "Idle"}</p>
@@ -325,17 +401,17 @@ function App() {
 
       {/* MAIN: Visualization */}
       <main className={styles.main}>
-        {!model ? (
+        {!model && !burgersModel ? (
           <div className={styles.loading}>Loading AI Model into Browser...</div>
-        ) : !plotData || !trace ? (
+        ) : !activePlot || !trace ? (
           <div className={styles.loading}>Running initial inference...</div>
         ) : (
           <Plot
             data={[
               {
                 z: trace.z,
-                x: plotData.x, // Space (-1 to 1)
-                y: plotData.y, // Time (0 to 1)
+                x: activePlot.x, // Space (-1 to 1)
+                y: activePlot.y, // Time (0 to 1)
                 type: 'heatmap',
                 colorscale: trace.colorscale,
                 zmin: trace.zmin,
@@ -386,7 +462,12 @@ function App() {
 // Build the Plotly trace settings for the selected view. PINN and Exact share a
 // common Viridis colour range so they are directly comparable; Error uses a
 // diverging scale centred at zero so over/under-prediction is obvious.
-function buildTrace(view: ViewMode, data: PlotState) {
+function buildTrace(
+  view: ViewMode,
+  data: PlotState,
+  exactLabel = 'Analytical Solution',
+  fieldLabel = 'Temp (u)'
+) {
   if (view === 'error') {
     const m = data.metrics.linf || 1e-9;
     return {
@@ -409,8 +490,8 @@ function buildTrace(view: ViewMode, data: PlotState) {
     zmin,
     zmax,
     zmid: undefined as number | undefined,
-    colorbarTitle: 'Temp (u)',
-    title: isPinn ? 'PINN Prediction' : 'Analytical Solution',
+    colorbarTitle: fieldLabel,
+    title: isPinn ? 'PINN Prediction' : exactLabel,
   };
 }
 
