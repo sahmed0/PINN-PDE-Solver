@@ -15,3 +15,6 @@ dependencies = [
 dev = [
     "pytest>=8.0",
 ]
+mlops = [
+    "mlflow>=2.0",
+]

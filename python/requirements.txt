@@ -2,4 +2,5 @@ jax
 equinox
 optax
 matplotlib
+mlflow
 pytest
