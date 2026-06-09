@@ -7,7 +7,7 @@ import numpy as np
 import equinox as eqx
 import optax
 from model import ParametricPINN
-from physics import compute_loss
+from physics import compute_loss, compute_loss_components
 from analytical import relative_l2_error
 
 def generate_training_data(key, num_collocation=1000, num_bc=100, num_ic=100):
@@ -62,7 +62,8 @@ def train_step(model, opt_state, optimizer, collocation_points, ic_points, bc_po
     return model, opt_state, loss_val
 
 def train(model, key, epochs=20000, lr=1e-3, validate=True,
-          val_alphas=(0.01, 0.05, 0.1), num_collocation=4000):
+          val_alphas=(0.01, 0.05, 0.1), num_collocation=4000,
+          log_callback=None):
     """Main training loop using Optax.
 
     When `validate` is set, the printed log also reports the mean relative L2
@@ -75,6 +76,12 @@ def train(model, key, epochs=20000, lr=1e-3, validate=True,
     high constant LR plateaus early on the residual; annealing it lets Adam keep
     sharpening the fit in late training, which is where most of the accuracy on
     a smooth problem like this comes from.
+
+    `log_callback` is an optional, backward-compatible instrumentation hook. When
+    provided, it is called as `log_callback(epoch, metrics_dict)` at the same
+    `epoch % 100` cadence as the printed log, where `metrics_dict` carries
+    `total_loss`, `loss_pde`, `loss_ic`, `loss_bc`, and `mean_rel_l2`. It does not
+    touch the gradient step; existing callers that pass nothing behave identically.
     """
     # Cosine-annealed Adam: start at `lr`, decay smoothly toward 0 by the last
     # epoch so late steps fine-tune rather than bounce around the minimum.
@@ -99,11 +106,19 @@ def train(model, key, epochs=20000, lr=1e-3, validate=True,
         )
 
         if epoch % 100 == 0 or epoch == epochs - 1:
+            mrl2 = mean_rel_l2(model) if (validate or log_callback is not None) else None
             if validate:
                 print(f"Epoch {epoch:04d} | Loss: {loss:.6f} "
-                      f"| mean rel L2: {mean_rel_l2(model):.3e}")
+                      f"| mean rel L2: {mrl2:.3e}")
             else:
                 print(f"Epoch {epoch:04d} | Loss: {loss:.6f}")
+
+            if log_callback is not None:
+                metrics = compute_loss_components(
+                    model, collocation_points, ic_points, bc_points
+                )
+                metrics["mean_rel_l2"] = mrl2
+                log_callback(epoch, metrics)
 
     return model
 
