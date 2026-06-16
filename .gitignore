@@ -1,0 +1,13 @@
+# MLOps local artefacts
+python/mlruns/
+python/outputs/
+mlruns/
+*.eqx
+
+# Azure ML secrets
+mlops/config.json
+
+# Python
+__pycache__/
+*.pyc
+.venv/
