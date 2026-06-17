@@ -1,0 +1,136 @@
+"""Evaluation gate for the heat-equation PINN.
+
+The gate is the pipeline decision point. It loads a saved model, evaluates it on the held-out test
+set (``test_set.held_out_metrics``) and passes ONLY if BOTH thresholds clear:
+
+    passed = (mean_rel_l2 < threshold)        # in-distribution interpolation
+             AND
+             (mean_rel_l2_ood < threshold_ood)  # OOD extrapolation (looser)
+
+It writes ``gate_result.json`` and exits 0 on pass / non-zero
+on fail so the terminal can branch on the result. On Windows branch
+with ``$LASTEXITCODE``, not bash ``&&``:
+
+    python mlops/gate.py --model-dir <dir>
+    if ($LASTEXITCODE -ne 0) { Write-Host "GATE FAILED — not promoting" }
+
+Run as a script, this file lives under mlops/, so before importing the package we
+add python/ to sys.path; the package's bootstrap then adds python/src.
+"""
+
+import argparse
+import json
+import os
+import sys
+import tempfile
+from datetime import datetime, timezone
+
+# Script-run bootstrap: ensure python/ is importable so `from mlops import ...`
+# resolves; the package __init__ then adds python/src for `import model` etc.
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+import mlflow
+
+from mlops import config, logging_utils, serialization, test_set
+
+
+def run_gate(model_dir, threshold, threshold_ood, source_run_id="local"):
+    """Evaluate the model in ``model_dir`` and build the gate-result dict.
+
+    ``passed`` is the AND of both threshold checks. All metric values come from
+    ``test_set.held_out_metrics`` already ``float()``-cast.
+    """
+    model = serialization.load_model(model_dir)
+    metrics = test_set.held_out_metrics(model)
+
+    passed = bool(
+        metrics["mean_rel_l2"] < threshold
+        and metrics["mean_rel_l2_ood"] < threshold_ood
+    )
+
+    return {
+        "passed": passed,
+        "mean_rel_l2": metrics["mean_rel_l2"],
+        "threshold": float(threshold),
+        "mean_rel_l2_ood": metrics["mean_rel_l2_ood"],
+        "threshold_ood": float(threshold_ood),
+        "per_alpha_rel_l2": metrics["per_alpha_rel_l2"],
+        "per_alpha_linf": metrics["per_alpha_linf"],
+        "source_run_id": source_run_id,
+        "evaluated_at": datetime.now(timezone.utc).isoformat(),
+    }
+
+
+def _resolve_model_dir(run_id, dst):
+    """Download a run's model artefacts from MLflow into ``dst``; return that dir.
+
+    The training entrypoint logs model.eqx / architecture.json / pinn_model.json
+    at the run's artifact root, so the downloaded root is a valid model dir.
+    """
+    logging_utils.setup_mlflow(None, config.EXPERIMENT_NAME)
+    return mlflow.artifacts.download_artifacts(run_id=run_id, dst_path=dst)
+
+
+def _verdict_text(result):
+    interp_ok = result["mean_rel_l2"] < result["threshold"]
+    ood_ok = result["mean_rel_l2_ood"] < result["threshold_ood"]
+    lines = [
+        "=" * 56,
+        f"GATE: {'PASS' if result['passed'] else 'FAIL'}",
+        "-" * 56,
+        f"  in-distribution mean rel-L2 : {result['mean_rel_l2']:.4e} "
+        f"{'<' if interp_ok else '>='} {result['threshold']:.1e}  "
+        f"[{'ok' if interp_ok else 'FAIL'}]",
+        f"  OOD mean rel-L2             : {result['mean_rel_l2_ood']:.4e} "
+        f"{'<' if ood_ok else '>='} {result['threshold_ood']:.1e}  "
+        f"[{'ok' if ood_ok else 'FAIL'}]",
+        "=" * 56,
+    ]
+    return "\n".join(lines)
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(description="Evaluation gate for the heat-equation PINN.")
+    src = p.add_mutually_exclusive_group(required=True)
+    src.add_argument("--model-dir", type=str, help="A training output dir.")
+    src.add_argument("--run-id", type=str,
+                     help="Resolve the model artefact from an MLflow run.")
+    p.add_argument("--threshold", type=float, default=config.MEAN_REL_L2_THRESHOLD,
+                   help="In-distribution mean rel-L2 must be below this.")
+    p.add_argument("--threshold-ood", type=float, default=config.MEAN_REL_L2_OOD_THRESHOLD,
+                   help="OOD mean rel-L2 must be below this (looser).")
+    p.add_argument("--output", type=str, default="gate_result.json",
+                   help="Where to write gate_result.json.")
+    args = p.parse_args(argv)
+
+    tmp = None
+    if args.run_id:
+        tmp = tempfile.mkdtemp(prefix="gate_model_")
+        model_dir = _resolve_model_dir(args.run_id, tmp)
+        source_run_id = args.run_id
+    else:
+        model_dir = args.model_dir
+        source_run_id = "local"
+
+    result = run_gate(model_dir, args.threshold, args.threshold_ood, source_run_id)
+
+    with open(args.output, "w", encoding="utf-8") as f:
+        json.dump(result, f, indent=2, default=str)
+
+    print(_verdict_text(result))
+    print(f"Wrote {args.output}")
+
+    # If invoked inside an active MLflow run, record
+    # the gate metrics + outcome on that run. Standalone local runs have none.
+    if mlflow.active_run() is not None:
+        mlflow.log_metrics({
+            "gate_mean_rel_l2": result["mean_rel_l2"],
+            "gate_mean_rel_l2_ood": result["mean_rel_l2_ood"],
+        })
+        mlflow.set_tag("gate_passed", str(result["passed"]).lower())
+
+    return 0 if result["passed"] else 1
+
+
+if __name__ == "__main__":
+    sys.exit(main())

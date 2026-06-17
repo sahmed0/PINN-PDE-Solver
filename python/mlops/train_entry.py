@@ -9,8 +9,9 @@ Usage (from python/):
     python mlops/train_entry.py --epochs 20000              # baseline
     python mlops/train_entry.py --epochs 300 --num-collocation 150 --config-name weak
 
-The "weak" config above is a deliberately-failing config; tunes
-it against the gate.
+The "weak" config above is the deliberately-failing config: 300 epochs
+on 150 collocation points trains too little to clear the gate. Gating its output
+dir breaches at least one threshold (interp or OOD), so it is NOT promoted.
 
 Run as a script, this file lives under mlops/, so before importing the package we
 add python/ to sys.path; the package's bootstrap then adds python/src.
