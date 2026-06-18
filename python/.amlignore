@@ -1,0 +1,9 @@
+# Keep the Azure ML code-upload (train_job.yml `code: ../python`) small and clean.
+# These must never be uploaded with the job.
+.venv/
+mlruns/
+outputs/
+__pycache__/
+*.pyc
+.pytest_cache/
+uv.lock

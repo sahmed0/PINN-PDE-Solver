@@ -1,0 +1,37 @@
+# Azure ML command job: heat-equation PINN training.
+#   Submit with:  az ml job create -f train_job.yml --web
+#
+# The training script (python/mlops/train_entry.py) needs ZERO Azure code: inside
+# an Azure ML job, azureml-mlflow injects MLFLOW_TRACKING_URI pointing at the
+# workspace, and setup_mlflow() honours that env var before any local fallback.
+#
+# ⚠️ experiment_name below MUST equal config.EXPERIMENT_NAME ("pinn-heat-equation"),
+# which setup_mlflow() passes to mlflow.set_experiment. If they drift, Azure splits
+# runs across two experiments.
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+
+code: ../python                       # uploads src/ + mlops/ (see python/.amlignore)
+command: >-
+  python mlops/train_entry.py
+  --epochs ${{inputs.epochs}}
+  --num-collocation ${{inputs.num_collocation}}
+  --lr ${{inputs.lr}}
+  --width-size ${{inputs.width_size}}
+  --depth ${{inputs.depth}}
+  --seed ${{inputs.seed}}
+  --config-name ${{inputs.config_name}}
+
+inputs:
+  epochs: 20000
+  num_collocation: 4000
+  lr: 0.001
+  width_size: 32
+  depth: 3
+  seed: 42
+  config_name: baseline
+
+environment: azureml:pinn-heat-train-env@latest
+compute: azureml:PINN-training-cluster
+experiment_name: pinn-heat-equation   # == config.EXPERIMENT_NAME
+display_name: pinn-heat-train-baseline

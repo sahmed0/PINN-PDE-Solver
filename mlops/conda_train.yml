@@ -1,0 +1,20 @@
+# Conda spec for the Azure ML TRAINING environment.
+# Referenced by environment.yml (conda_file). Pinned loosely to match
+# python/pyproject.toml. CPU only — no GPU, no TensorFlow/ONNX.
+name: pinn-heat-train
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip>=24.0
+  - numpy
+  - pip:
+      - jax[cpu]>=0.4.30
+      - equinox>=0.11
+      - optax>=0.2
+      - matplotlib>=3.8
+      - mlflow>=2.0
+      # azureml-mlflow makes `mlflow` auto-point at the workspace tracking URI
+      # inside an Azure ML job. Without it the
+      # run's metrics/artefacts will NOT be captured by the workspace.
+      - azureml-mlflow

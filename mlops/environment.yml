@@ -1,0 +1,12 @@
+# Azure ML TRAINING environment asset.
+#   Register with:  az ml environment create -f environment.yml
+# A standard Azure ML openmpi/Ubuntu base image + the conda spec in conda_train.yml.
+# This is the env the training command job (train_job.yml) runs in.
+$schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
+name: pinn-heat-train-env
+version: 1
+image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04
+conda_file: ./conda_train.yml
+description: >-
+  CPU training environment for the heat-equation PINN (JAX/Equinox/Optax) with
+  MLflow + azureml-mlflow for automatic run capture. No GPU, no TensorFlow/ONNX.
