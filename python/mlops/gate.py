@@ -14,6 +14,14 @@ with ``$LASTEXITCODE``, not bash ``&&``:
     python mlops/gate.py --model-dir <dir>
     if ($LASTEXITCODE -ne 0) { Write-Host "GATE FAILED — not promoting" }
 
+With ``--register`` a passing model is promoted to the Azure ML Model
+Registry via ``MLClient.models.create_or_update`` with its gate metrics attached
+as tags/properties; a failing model is NOT registered. Requires Azure auth
+(``az login`` + a workspace ``config.json``). The local path (no ``--register``)
+is unchanged and needs no Azure SDK.
+
+    python mlops/gate.py --model-dir <dir> --register --config-name baseline
+
 Run as a script, this file lives under mlops/, so before importing the package we
 add python/ to sys.path; the package's bootstrap then adds python/src.
 """
@@ -71,6 +79,71 @@ def _resolve_model_dir(run_id, dst):
     return mlflow.artifacts.download_artifacts(run_id=run_id, dst_path=dst)
 
 
+def _make_ml_client():
+    """Build an Azure ML client from the workspace config.json + default creds.
+
+    Lazy-imported so the local gate path (no ``--register``) and the offline tests
+    never need the Azure SDK installed/loaded. Auth = ``az login`` locally;
+    ``config.json`` (gitignored, placed in mlops/) supplies subscription/RG/workspace.
+    """
+    from azure.ai.ml import MLClient
+    from azure.identity import DefaultAzureCredential
+
+    # config.json lives in mlops/ (alongside config.json.example). Point
+    # from_config at that directory explicitly so it works regardless of CWD.
+    mlops_dir = os.path.join(config.REPO_ROOT, "mlops")
+    return MLClient.from_config(DefaultAzureCredential(), path=mlops_dir)
+
+
+def register_model(result, model_path, model_name, config_name, ml_client=None):
+    """Register the model dir at ``model_path`` in the Azure ML Model Registry.
+
+    Only call this when ``result["passed"]`` is True. Attaches the gate metrics as
+    tags + properties so the registry records why the model cleared the bar and
+    which run produced it. Returns the new model version.
+
+    ``model_path`` is a local directory (the gate already has it, or downloaded it
+    from a run via ``_resolve_model_dir``). Registering from a path is uniform
+    across local + cloud; run lineage is preserved via the ``source_run_id``
+    tag/property. (For tighter portal lineage one could instead point at the
+    Azure-only job-output URI ``azureml://jobs/<run-id>/outputs/artifacts/paths/``
+    — see mlops/README.md.)
+    """
+    from azure.ai.ml.constants import AssetTypes
+    from azure.ai.ml.entities import Model
+
+    if ml_client is None:
+        ml_client = _make_ml_client()
+
+    # Azure ML property values must be strings; result values are already float-cast.
+    properties = {
+        "mean_rel_l2": str(result["mean_rel_l2"]),
+        "threshold": str(result["threshold"]),
+        "mean_rel_l2_ood": str(result["mean_rel_l2_ood"]),
+        "threshold_ood": str(result["threshold_ood"]),
+        "source_run_id": str(result["source_run_id"]),
+        "config_name": str(config_name),
+        "passed": str(result["passed"]),
+    }
+    for alpha, val in result["per_alpha_rel_l2"].items():
+        properties[f"rel_l2_{alpha}"] = str(val)
+
+    model = Model(
+        path=model_path,
+        name=model_name,
+        type=AssetTypes.CUSTOM_MODEL,
+        description="Heat-equation PINN that cleared the evaluation gate.",
+        tags={
+            "passed": str(result["passed"]),
+            "config_name": str(config_name),
+            "source_run_id": str(result["source_run_id"]),
+        },
+        properties=properties,
+    )
+    registered = ml_client.models.create_or_update(model)
+    return registered.version
+
+
 def _verdict_text(result):
     interp_ok = result["mean_rel_l2"] < result["threshold"]
     ood_ok = result["mean_rel_l2_ood"] < result["threshold_ood"]
@@ -101,6 +174,15 @@ def main(argv=None):
                    help="OOD mean rel-L2 must be below this (looser).")
     p.add_argument("--output", type=str, default="gate_result.json",
                    help="Where to write gate_result.json.")
+    p.add_argument("--register", action="store_true",
+                   help="On PASS, register the model in the Azure ML Model "
+                        "Registry (needs az login + config.json). On FAIL, "
+                        "register nothing.")
+    p.add_argument("--model-name", type=str, default=config.REGISTERED_MODEL_NAME,
+                   help="Registered model name (Azure ML Model Registry).")
+    p.add_argument("--config-name", type=str, default="unknown",
+                   help="Label recorded as a registry tag/property "
+                        "(e.g. 'baseline'/'weak').")
     args = p.parse_args(argv)
 
     tmp = None
@@ -128,6 +210,17 @@ def main(argv=None):
             "gate_mean_rel_l2_ood": result["mean_rel_l2_ood"],
         })
         mlflow.set_tag("gate_passed", str(result["passed"]).lower())
+
+    # Promote only on PASS. The registry holds only models that
+    # cleared the gate — a failing run logs its failure and registers nothing.
+    if args.register:
+        if result["passed"]:
+            version = register_model(
+                result, model_dir, args.model_name, args.config_name
+            )
+            print(f"Registered '{args.model_name}' version {version}")
+        else:
+            print("GATE FAILED — not registering (registry holds passing models only).")
 
     return 0 if result["passed"] else 1
 
