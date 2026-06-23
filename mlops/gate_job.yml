@@ -1,0 +1,29 @@
+# Azure ML command job: evaluation gate + Model Registry promotion.
+#   Submit with:  az ml job create -f gate_job.yml --set inputs.run_id=<train-run-id>
+#
+# Runs the SAME mlops/gate.py as the local pipeline, with --register: it resolves
+# the trained model from the given run id, evaluates it on the held-out test set,
+# and registers it in the Azure ML Model Registry ONLY if it clears both
+# thresholds. A failing run registers nothing.
+#
+# ⚠️ experiment_name below MUST equal config.EXPERIMENT_NAME ("pinn-heat-equation").
+$schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
+type: command
+
+code: ../python                       # uploads src/ + mlops/ (see python/.amlignore)
+command: >-
+  python mlops/gate.py
+  --run-id ${{inputs.run_id}}
+  --register
+  --config-name ${{inputs.config_name}}
+  --model-name ${{inputs.model_name}}
+
+inputs:
+  run_id: FILL_IN_TRAINING_RUN_ID     # override at submit: --set inputs.run_id=<id>
+  config_name: baseline
+  model_name: pinn-heat               # == config.REGISTERED_MODEL_NAME
+
+environment: azureml:pinn-heat-train-env@latest   # reuse training env (carries azure-ai-ml)
+compute: azureml:PINN-training-cluster
+experiment_name: pinn-heat-equation   # == config.EXPERIMENT_NAME
+display_name: pinn-heat-gate-register

@@ -18,3 +18,7 @@ dependencies:
       # inside an Azure ML job. Without it the
       # run's metrics/artefacts will NOT be captured by the workspace.
       - azureml-mlflow
+      # The gate job runs `gate.py --register`, which uses the Azure ML
+      # SDK to promote a passing model to the Model Registry.
+      - azure-ai-ml
+      - azure-identity
