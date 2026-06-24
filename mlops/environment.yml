@@ -4,7 +4,7 @@
 # This is the env the training command job (train_job.yml) runs in.
 $schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
 name: pinn-heat-train-env
-version: 1
+version: 2
 image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04
 conda_file: ./conda_train.yml
 description: >-

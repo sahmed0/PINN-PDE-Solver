@@ -133,13 +133,20 @@ def main(argv=None):
         with open(metrics_path, "w", encoding="utf-8") as f:
             json.dump(metrics, f, indent=2, default=str)
 
-        # Log every artefact to MLflow.
-        for name in (config.MODEL_FILENAME, config.ARCH_FILENAME,
-                     config.FRONTEND_JSON_FILENAME):
-            mlflow.log_artifact(os.path.join(out_dir, name))
-        mlflow.log_artifact(loss_png)
-        mlflow.log_artifact(sol_png)
-        mlflow.log_artifact(metrics_path)
+        # Log every artefact to MLflow. These files already live in out_dir,
+        # which Azure ML auto-captures from outputs/, so a logging failure
+        # (e.g. an mlflow/azureml-mlflow artifact-builder version mismatch)
+        # must NOT fail an otherwise-successful training run.
+        artifacts = [os.path.join(out_dir, name) for name in (
+            config.MODEL_FILENAME, config.ARCH_FILENAME,
+            config.FRONTEND_JSON_FILENAME)]
+        artifacts += [loss_png, sol_png, metrics_path]
+        for path in artifacts:
+            try:
+                mlflow.log_artifact(path)
+            except Exception as exc:  # noqa: BLE001 -- never fail the run on logging
+                print(f"WARNING: mlflow.log_artifact failed for {path}: {exc!r} "
+                      "(file is still in outputs/ and captured by Azure ML)")
 
     print(f"\nRun id:    {run_id}")
     print(f"Output dir: {out_dir}")
