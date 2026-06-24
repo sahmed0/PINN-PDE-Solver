@@ -80,19 +80,31 @@ def _resolve_model_dir(run_id, dst):
 
 
 def _make_ml_client():
-    """Build an Azure ML client from the workspace config.json + default creds.
+    """Build an Azure ML client, resolving the workspace two ways.
 
     Lazy-imported so the local gate path (no ``--register``) and the offline tests
-    never need the Azure SDK installed/loaded. Auth = ``az login`` locally;
-    ``config.json`` (gitignored, placed in mlops/) supplies subscription/RG/workspace.
+    never need the Azure SDK installed/loaded. Auth = ``DefaultAzureCredential``
+    (``az login`` locally; the job's managed identity in the cloud).
+
+    Inside an Azure ML job the workspace coordinates are injected as env vars and
+    ``config.json`` is NOT present. So prefer the env vars when present,
+    and fall back to ``config.json`` in mlops/ for the local path.
     """
     from azure.ai.ml import MLClient
     from azure.identity import DefaultAzureCredential
 
-    # config.json lives in mlops/ (alongside config.json.example). Point
-    # from_config at that directory explicitly so it works regardless of CWD.
+    cred = DefaultAzureCredential()
+
+    sub = os.environ.get("AZUREML_ARM_SUBSCRIPTION")
+    rg = os.environ.get("AZUREML_ARM_RESOURCEGROUP")
+    ws = os.environ.get("AZUREML_ARM_WORKSPACE_NAME")
+    if sub and rg and ws:
+        return MLClient(cred, sub, rg, ws)
+
+    # Local path: config.json (gitignored) in mlops/ supplies subscription/RG/workspace.
+    # Point from_config at mlops directory explicitly so it works regardless of CWD.
     mlops_dir = os.path.join(config.REPO_ROOT, "mlops")
-    return MLClient.from_config(DefaultAzureCredential(), path=mlops_dir)
+    return MLClient.from_config(cred, path=mlops_dir)
 
 
 def register_model(result, model_path, model_name, config_name, ml_client=None):
@@ -111,6 +123,7 @@ def register_model(result, model_path, model_name, config_name, ml_client=None):
     """
     from azure.ai.ml.constants import AssetTypes
     from azure.ai.ml.entities import Model
+    from azure.core.exceptions import ClientAuthenticationError
 
     if ml_client is None:
         ml_client = _make_ml_client()
@@ -140,7 +153,18 @@ def register_model(result, model_path, model_name, config_name, ml_client=None):
         },
         properties=properties,
     )
-    registered = ml_client.models.create_or_update(model)
+    try:
+        registered = ml_client.models.create_or_update(model)
+    except ClientAuthenticationError as e:
+        raise RuntimeError(
+            "Model registration failed to authenticate to Azure.\n"
+            "  - Local run: have you run `az login` (and is mlops/config.json present)?\n"
+            "  - Azure ML job: the compute cluster needs a managed identity with an\n"
+            "    RBAC role (AzureML Data Scientist / Contributor) on the workspace,\n"
+            "    and the job must request it via `identity: { type: managed }`.\n"
+            "    See mlops/gate_job.yml.\n"
+            f"Underlying error: {e}"
+        ) from e
     return registered.version
 
 

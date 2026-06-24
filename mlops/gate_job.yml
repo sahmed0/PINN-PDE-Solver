@@ -25,5 +25,12 @@ inputs:
 
 environment: azureml:pinn-heat-train-env@latest   # reuse training env (carries azure-ai-ml)
 compute: azureml:PINN-training-cluster
+
+# Model registration hits the ARM/management plane, which needs a real AAD token.
+# The default AmlToken can't do that, so request the compute's managed identity.
+# The cluster MUST have this identity assigned AND it needs an RBAC role on the
+# workspace (AzureML Data Scientist, or Contributor).
+identity:
+  type: managed
 experiment_name: pinn-heat-equation   # == config.EXPERIMENT_NAME
 display_name: pinn-heat-gate-register
