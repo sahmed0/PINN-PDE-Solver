@@ -1,0 +1,12 @@
+# Azure ML managed online ENDPOINT for the heat-equation PINN.
+#   Create with:  az ml online-endpoint create -f endpoint.yml
+#   Tear down  :  az ml online-endpoint delete --name pinn-heat-endpoint --yes
+#
+# ⚠️ The endpoint `name` must be UNIQUE per Azure region within the subscription. If
+# `pinn-heat-endpoint` is taken, change it here (and in deployment.yml `endpoint_name`).
+# auth_mode: key issues a static key for `az ml online-endpoint invoke`.
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineEndpoint.schema.json
+name: pinn-heat-endpoint
+auth_mode: key
+description: >-
+  REST endpoint serving the gate-passed heat-equation PINN.

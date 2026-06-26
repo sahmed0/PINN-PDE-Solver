@@ -7,3 +7,6 @@ __pycache__/
 *.pyc
 .pytest_cache/
 uv.lock
+# Secrets must never ride along even if copied into the upload tree.
+config.json
+**/config.json

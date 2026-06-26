@@ -1,0 +1,3 @@
+# Guards the Azure ML code-upload if any job ever sets `code:` to this dir.
+# config.json holds workspace credentials/env vars and must NEVER be uploaded.
+config.json

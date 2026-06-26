@@ -1,0 +1,16 @@
+# Azure ML INFERENCE environment asset (managed online endpoint).
+#   Register with:  az ml environment create -f environment_inference.yml
+#
+# DEDICATED inference env:
+# managed online deployments need the inference HTTP server in the image, which the
+# openmpi/Ubuntu TRAINING base lacks. We reuse that same base
+# and add `azureml-inference-server-http` plus the lean
+# jax/equinox/optax/numpy deps in conda_inference.yml.
+$schema: https://azuremlschemas.azureedge.net/latest/environment.schema.json
+name: pinn-heat-inference-env
+version: 1
+image: mcr.microsoft.com/azureml/openmpi4.1.0-ubuntu22.04
+conda_file: ./conda_inference.yml
+description: >-
+  CPU inference environment for the heat-equation PINN (JAX/Equinox/Optax) with the
+  Azure ML inference HTTP server. No GPU, no TensorFlow/ONNX, no MLflow/azure-ai-ml.

@@ -1,0 +1,24 @@
+# Azure ML managed online DEPLOYMENT for the heat-equation PINN.
+#   Create with:  az ml online-deployment create -f deployment.yml --all-traffic
+#   Local first:  az ml online-deployment create -f deployment.yml --local
+#
+# Serves a gate-passed model from the Model Registry. `model` resolves to
+# the most recently registered (gate-passing) version; pin one explicitly with
+#   az ml online-deployment create -f deployment.yml --all-traffic \
+#     --set model=azureml:pinn-heat:<version>
+#
+# Source-packaging: the .eqx artefact carries no code, so
+# `code: ../python` uploads src/ + mlops/ and `scoring_script: mlops/score.py`
+# rebuilds the ParametricPINN skeleton at load time (see score.py header).
+#
+# Uses the DEDICATED inference env (not the training env) — see environment_inference.yml.
+$schema: https://azuremlschemas.azureedge.net/latest/managedOnlineDeployment.schema.json
+name: blue
+endpoint_name: pinn-heat-endpoint
+model: azureml:pinn-heat@latest
+environment: azureml:pinn-heat-inference-env@latest
+code_configuration:
+  code: ../python                  # uploads src/ + mlops/ (see python/.amlignore)
+  scoring_script: mlops/score.py
+instance_type: Standard_DS2_v2     # small CPU SKU; this MLP serves in ms
+instance_count: 1

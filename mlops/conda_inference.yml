@@ -1,0 +1,23 @@
+# Conda spec for the Azure ML INFERENCE environment (managed online endpoint).
+# Referenced by environment_inference.yml (conda_file). Leaner than the training
+# env: NO mlflow / azureml-mlflow / azure-ai-ml / matplotlib — the scoring script
+# only needs to rebuild + run the PINN. CPU only.
+#
+# `serialization.load_model` imports `train` (for export_to_json), which pulls in
+# numpy/jax/equinox/optax — hence those deps. `azureml-inference-server-http` is
+# the HTTP server the managed online deployment runs; the openmpi TRAINING base
+# does NOT include it, so it must be installed here.
+name: pinn-heat-inference
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - pip>=24.0
+  - numpy
+  - pip:
+      - jax[cpu]>=0.4.30
+      - equinox>=0.11
+      - optax>=0.2
+      # The Azure ML inference HTTP server (init/run host). Required for managed
+      # online deployments built on a non-inference base image.
+      - azureml-inference-server-http
