@@ -4,8 +4,11 @@ python/outputs/
 mlruns/
 *.eqx
 
-# Azure ML secrets
+# Azure ML secrets – config.json holds workspace creds/env vars and must NEVER
+# be committed. Ignore it anywhere it might be copied; the tracked template is
+# config.json.example (does not match this glob).
 mlops/config.json
+**/config.json
 
 # Python
 __pycache__/
