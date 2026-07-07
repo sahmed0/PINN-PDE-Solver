@@ -1,8 +1,7 @@
 [project]
-name = "python"
+name = "pinn-pde-solver"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
+description = "Physics-informed neural network PDE solver with an Azure ML MLOps pipeline: training, evaluation gate, model registry, managed endpoint"
 requires-python = ">=3.12,<3.13"
 dependencies = [
     "jax>=0.4.30",

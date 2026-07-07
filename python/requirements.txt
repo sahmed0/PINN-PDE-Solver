@@ -1,8 +1,0 @@
-jax
-equinox
-optax
-matplotlib
-mlflow
-azure-ai-ml
-azure-identity
-pytest
