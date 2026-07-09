@@ -14,3 +14,6 @@ mlops/config.json
 __pycache__/
 *.pyc
 .venv/
+
+# Run artifacts
+gate_result*.json
