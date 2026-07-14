@@ -6,9 +6,9 @@ import jax.random as jr
 import numpy as np
 import equinox as eqx
 import optax
-from model import ParametricPINN
-from physics import compute_loss, compute_loss_components
-from analytical import relative_l2_error
+from pinn.model import ParametricPINN
+from pinn.physics import compute_loss, compute_loss_components
+from pinn.analytical import relative_l2_error
 
 def generate_training_data(key, num_collocation=1000, num_bc=100, num_ic=100):
     """

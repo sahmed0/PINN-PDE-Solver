@@ -19,9 +19,7 @@ gate" means exactly what the training-time validation number means.
   extrapolation is intrinsically harder, hence the looser OOD threshold.
 """
 
-from . import _bootstrap  # noqa: F401  (puts python/src on sys.path)
-
-import analytical
+from pinn import analytical
 
 from . import config
 

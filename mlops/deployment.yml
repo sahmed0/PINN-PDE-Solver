@@ -8,7 +8,7 @@
 #     --set model=azureml:pinn-heat:<version>
 #
 # Source-packaging: the .eqx artefact carries no code, so
-# `code: ../python` uploads src/ + mlops/ and `scoring_script: mlops/score.py`
+# `code: ../python` uploads pinn/ + mlops/ and `scoring_script: mlops/score.py`
 # rebuilds the ParametricPINN skeleton at load time (see score.py header).
 #
 # Uses the DEDICATED inference env (not the training env) — see environment_inference.yml.
@@ -18,7 +18,7 @@ endpoint_name: pinn-heat-endpoint
 model: azureml:pinn-heat@latest
 environment: azureml:pinn-heat-inference-env@latest
 code_configuration:
-  code: ../python                  # uploads src/ + mlops/ (see python/.amlignore)
+  code: ../python                  # uploads pinn/ + mlops/ (see python/.amlignore)
   scoring_script: mlops/score.py
 instance_type: Standard_DS2_v2     # small CPU SKU; this MLP serves in ms
 instance_count: 1

@@ -52,7 +52,7 @@ minimises how badly its own derivatives (taken with `jax.grad`) violate the equa
 collocation points. The model is **parametric in `α`**: inputs are `[x, t, α]`, output is `u`, so a single
 network represents the entire family of solutions over the diffusivity range.
 
-Two engineering decisions did the heavy lifting (see [python/src/model.py](python/src/model.py)):
+Two engineering decisions did the heavy lifting (see [python/pinn/model.py](python/pinn/model.py)):
 
 - **Hard-constraint ansatz.** Instead of penalising boundary/initial-condition violations softly in the
   loss (where the optimiser trades them off against the residual), the output is structured as
@@ -255,7 +255,7 @@ uv run --group mlops python mlops/gate.py --model-dir outputs/<weak-run-dir>   #
 ```
 PDE-solver/
 ├─ python/
-│  ├─ src/            # PINN core: model, physics (residual/loss), training, analytical solution
+│  ├─ pinn/           # PINN core (installable package): model, physics (residual/loss), training, analytical solution
 │  ├─ mlops/          # MLOps logic: train_entry, gate, test_set, serialization, score, logging_utils
 │  └─ pytests/        # 37 tests – core + MLOps, all offline/fast (Azure SDK mocked)
 ├─ mlops/             # Azure ML assets: environment + job + endpoint + deployment YAML, runbook

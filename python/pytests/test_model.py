@@ -1,7 +1,8 @@
-import pytest
 import jax.numpy as jnp
 import jax.random as jr
-from model import ParametricPINN
+
+from pinn.model import ParametricPINN
+
 
 def test_pinn_output_shape():
     # 1. Initialize a JAX random key for model weight initialization

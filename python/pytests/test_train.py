@@ -1,10 +1,11 @@
-import os
-import pytest
-import jax.random as jr
 import json
+import os
 
-from model import ParametricPINN
-from train import train, export_to_json
+import jax.random as jr
+
+from pinn.model import ParametricPINN
+from pinn.train import export_to_json, train
+
 
 def test_training_loop_and_export(tmp_path):
     key = jr.PRNGKey(99)

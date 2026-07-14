@@ -11,9 +11,11 @@
 $schema: https://azuremlschemas.azureedge.net/latest/commandJob.schema.json
 type: command
 
-code: ../python                       # uploads src/ + mlops/ (see python/.amlignore)
+code: ../python                       # uploads pinn/ + mlops/ (see python/.amlignore)
+# `python -m` runs from the code root (python/), putting it on sys.path so the
+# installed-package imports (`pinn`, `mlops`) resolve without a sys.path bootstrap.
 command: >-
-  python mlops/train_entry.py
+  python -m mlops.train_entry
   --epochs ${{inputs.epochs}}
   --num-collocation ${{inputs.num_collocation}}
   --lr ${{inputs.lr}}

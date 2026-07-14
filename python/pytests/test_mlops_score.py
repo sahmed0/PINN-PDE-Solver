@@ -14,7 +14,7 @@ import math
 import jax.random as jr
 
 from mlops import score, serialization
-from model import ParametricPINN
+from pinn.model import ParametricPINN
 
 
 def _init_with_tiny_model(tmp_path, monkeypatch):

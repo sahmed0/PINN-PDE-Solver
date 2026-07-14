@@ -1,13 +1,13 @@
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-import equinox as eqx
 
-from inverse import (
+from pinn.inverse import (
     InversePINN,
-    generate_observations,
-    generate_inverse_data,
     compute_inverse_loss,
+    generate_inverse_data,
+    generate_observations,
     train_inverse,
 )
 
@@ -38,7 +38,7 @@ def test_generate_observations_shapes_and_noise():
     assert jnp.all(X_obs[:, 1] >= 0.0) and jnp.all(X_obs[:, 1] <= 1.0)
 
     # Noise must actually be present: observations differ from the clean field.
-    from analytical import u_exact
+    from pinn.analytical import u_exact
     clean = u_exact(X_obs[:, 0:1], X_obs[:, 1:2], alpha_true)
     assert float(jnp.mean(jnp.abs(u_obs - clean))) > 1e-4
 

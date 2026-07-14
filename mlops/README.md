@@ -237,9 +237,11 @@ request shapes:
 
 **Source-packaging note:** the registered `.eqx` artefact carries **no code**, but
 `eqx.tree_deserialise_leaves` rebuilds the skeleton from the live `ParametricPINN` class.
-So the deployment sets `code: ../python` (uploads `src/` + `mlops/`) and
-`scoring_script: mlops/score.py`; `score.py` does the same `sys.path` bootstrap as the other
-entrypoints so `import model` / `from mlops import serialization` resolve at inference time.
+So the deployment sets `code: ../python` (uploads `pinn/` + `mlops/`) and
+`scoring_script: mlops/score.py`; `score.py` keeps a single `sys.path` bootstrap for the
+Azure inference container (which mounts the code but pip-installs nothing) so
+`from pinn.model import ParametricPINN` / `from mlops import serialization` resolve at
+inference time.
 
 ### 0. Docker smoke-test the deployment locally first (recommended)
 

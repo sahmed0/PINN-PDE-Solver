@@ -1,10 +1,11 @@
-import pytest
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-import equinox as eqx
-from model import ParametricPINN
-from physics import compute_loss
+
+from pinn.model import ParametricPINN
+from pinn.physics import compute_loss
+
 
 def test_compute_loss_and_gradients():
     # 1. Initialize Model

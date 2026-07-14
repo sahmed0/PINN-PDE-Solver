@@ -4,7 +4,7 @@ import jax.numpy as jnp
 import jax.random as jr
 
 from mlops import serialization
-from model import ParametricPINN
+from pinn.model import ParametricPINN
 
 
 def test_save_load_roundtrip(tmp_path):

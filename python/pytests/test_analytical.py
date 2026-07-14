@@ -2,15 +2,15 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
-from model import ParametricPINN
-from analytical import (
-    u_exact,
+from pinn.analytical import (
+    evaluate,
     make_grid,
+    max_abs_error,
     predict_on_grid,
     relative_l2_error,
-    max_abs_error,
-    evaluate,
+    u_exact,
 )
+from pinn.model import ParametricPINN
 
 
 def test_u_exact_matches_initial_and_boundary_conditions():

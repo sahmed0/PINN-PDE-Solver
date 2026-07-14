@@ -1496,7 +1496,7 @@ wheels = [
 [[package]]
 name = "pinn-pde-solver"
 version = "0.1.0"
-source = { virtual = "." }
+source = { editable = "." }
 dependencies = [
     { name = "equinox" },
     { name = "jax" },

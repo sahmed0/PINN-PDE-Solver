@@ -7,7 +7,7 @@ model, the pass case monkeypatches the metrics.
 import jax.random as jr
 
 from mlops import config, gate, serialization, test_set
-from model import ParametricPINN
+from pinn.model import ParametricPINN
 
 
 def _save_untrained(tmp_path):

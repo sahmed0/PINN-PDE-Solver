@@ -1,14 +1,14 @@
+import equinox as eqx
 import jax
 import jax.numpy as jnp
 import jax.random as jr
-import equinox as eqx
 
-from burgers import (
+from pinn.burgers import (
     BurgersPINN,
+    burgers_reference,
     burgers_residual,
     compute_burgers_loss,
     generate_burgers_data,
-    burgers_reference,
     train_burgers,
 )
 

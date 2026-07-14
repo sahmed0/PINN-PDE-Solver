@@ -2,16 +2,13 @@
 
 import os
 
-from . import _bootstrap  # noqa: F401  (puts python/src on sys.path)
-
 import matplotlib
 
 matplotlib.use("Agg")  # headless: no display on CI / Azure compute
 import matplotlib.pyplot as plt
-
 import mlflow
 
-import analytical
+from pinn import analytical
 
 from . import config
 

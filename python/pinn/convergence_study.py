@@ -11,7 +11,7 @@ than collocation density. The resulting log-log plot is saved to
 
 Run from the `python/` directory:
 
-    python src/convergence_study.py
+    python -m pinn.convergence_study
 """
 
 import os
@@ -19,9 +19,9 @@ import os
 import jax.random as jr
 import matplotlib.pyplot as plt
 
-from model import ParametricPINN
-from train import train
-from analytical import evaluate
+from pinn.model import ParametricPINN
+from pinn.train import train
+from pinn.analytical import evaluate
 
 
 def run_study(collocation_counts=(100, 250, 500, 1000, 2000, 4000),
@@ -52,8 +52,8 @@ def _train_with_collocation(model, key, num_collocation, epochs, lr):
     """
     import equinox as eqx
     import optax
-    from train import generate_training_data, train_step
-    from analytical import relative_l2_error
+    from pinn.train import generate_training_data, train_step
+    from pinn.analytical import relative_l2_error
 
     # generate_training_data only exposes num_collocation as a kwarg.
     collocation_points, ic_points, bc_points = generate_training_data(

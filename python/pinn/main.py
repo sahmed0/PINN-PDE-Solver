@@ -1,4 +1,5 @@
 import os
+
 # '0' = all logs (default)
 # '1' = filter out INFO logs (this hides the oneDNN message)
 # '2' = filter out INFO and WARNING logs
@@ -8,11 +9,13 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 import os
 
 import jax.random as jr
-from model import ParametricPINN
-from train import train, export_to_json
-from analytical import evaluate, format_report
-from inverse import run_inverse_demo
-from burgers import run_burgers_demo
+
+from pinn.analytical import evaluate, format_report
+from pinn.burgers import run_burgers_demo
+from pinn.inverse import run_inverse_demo
+from pinn.model import ParametricPINN
+from pinn.train import export_to_json, train
+
 
 def main():
     print("--- Starting PINN Backend Pipeline ---")
@@ -66,7 +69,7 @@ def main():
     )
     run_burgers_demo(export_path=burgers_filepath)
 
-    print(f"\n--- Pipeline Complete! ---")
+    print("\n--- Pipeline Complete! ---")
     print(f"Successfully saved: {json_filepath}")
     print(f"Successfully saved: {inverse_filepath}")
     print(f"Successfully saved: {burgers_filepath}")

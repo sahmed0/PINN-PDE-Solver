@@ -12,29 +12,20 @@ Usage (from python/):
 The "weak" config above is the deliberately-failing config: 300 epochs
 on 150 collocation points trains too little to clear the gate. Gating its output
 dir breaches at least one threshold (interp or OOD), so it is NOT promoted.
-
-Run as a script, this file lives under mlops/, so before importing the package we
-add python/ to sys.path; the package's bootstrap then adds python/src.
 """
 
 import argparse
 import datetime
 import json
 import os
-import sys
-
-# Script-run bootstrap: ensure python/ is importable so `from mlops import ...`
-# resolves; the package __init__ then adds python/src for `import model` etc.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import jax.random as jr
 import mlflow
 
 from mlops import config, logging_utils, serialization
-
-import analytical
-import train as train_mod
-from model import ParametricPINN
+from pinn import analytical
+from pinn import train as train_mod
+from pinn.model import ParametricPINN
 
 
 def parse_args(argv=None):

@@ -21,9 +21,6 @@ as tags/properties; a failing model is NOT registered. Requires Azure auth
 is unchanged and needs no Azure SDK.
 
     python mlops/gate.py --model-dir <dir> --register --config-name baseline
-
-Run as a script, this file lives under mlops/, so before importing the package we
-add python/ to sys.path; the package's bootstrap then adds python/src.
 """
 
 import argparse
@@ -32,10 +29,6 @@ import os
 import sys
 import tempfile
 from datetime import datetime, timezone
-
-# Script-run bootstrap: ensure python/ is importable so `from mlops import ...`
-# resolves; the package __init__ then adds python/src for `import model` etc.
-sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import mlflow
 

@@ -8,10 +8,11 @@ from the live ``ParametricPINN`` class, so ``model.py`` (and ``serialization.py`
 must be importable at scoring time.
 
 That is why the deployment sets ``code_configuration.code: ../python`` (uploads
-``src/`` + ``mlops/``) and ``scoring_script: mlops/score.py``. This file lives under
-the ``mlops`` package but does the same ``sys.path`` bootstrap as the other
-entrypoints and uses **absolute** imports, so it works both as Azure's standalone
-scoring script and as ``mlops.score`` in tests.
+``pinn/`` + ``mlops/``) and ``scoring_script: mlops/score.py``. The Azure inference
+container mounts that code directory but pip-installs nothing, so this file keeps a
+single ``sys.path`` bootstrap (see below) and uses **absolute** imports, letting it
+work both as Azure's standalone scoring script and as ``mlops.score`` in tests (where
+the ``pinn``/``mlops`` packages are installed).
 
 Request shapes — ``run`` accepts either:
 
@@ -26,15 +27,17 @@ import json
 import os
 import sys
 
-# Script-run bootstrap: ensure python/ is importable so `from mlops import ...`
-# resolves; the package __init__ then adds python/src for `import model` etc.
+# Azure inference-container bootstrap (the ONLY remaining sys.path insert in the
+# codebase): the managed deployment mounts this code dir but pip-installs nothing, so
+# put python/ on the path to make `pinn` and `mlops` importable. Local/test use goes
+# through the installed package, where this insert is a harmless no-op.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 import jax
 import jax.numpy as jnp
 
 from mlops import config, serialization
-import analytical
+from pinn import analytical
 
 # Populated by init(); reused across requests.
 _MODEL = None

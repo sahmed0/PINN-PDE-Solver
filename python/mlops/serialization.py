@@ -12,15 +12,11 @@ Reload rebuilds the skeleton from architecture.json, then deserialises into it.
 import json
 import os
 
-from . import _bootstrap  # noqa: F401  (puts python/src on sys.path)
-
 import equinox as eqx
-import jax.numpy as jnp
 import jax.random as jr
 
-import model as _model_mod
-import train as _train_mod
-from model import ParametricPINN
+from pinn import train as _train_mod
+from pinn.model import ParametricPINN
 
 from . import config
 

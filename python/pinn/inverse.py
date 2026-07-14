@@ -38,8 +38,8 @@ import jax.random as jr
 import numpy as np
 import optax
 
-from analytical import u_exact
-from crlb import crlb_std, design_sweep
+from pinn.analytical import u_exact
+from pinn.crlb import crlb_std, design_sweep
 
 # Inputs here are only [x, t] (alpha is no longer an input but an unknown), so we
 # normalise both to ~[-1, 1] before the MLP exactly as the forward model does.
