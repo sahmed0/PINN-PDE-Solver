@@ -13,11 +13,14 @@ channels:
 dependencies:
   - python=3.12
   - pip>=24.0
-  - numpy
+  - numpy=2.4.6
   - pip:
-      - jax[cpu]>=0.4.30
-      - equinox>=0.11
-      - optax>=0.2
+      # Pinned to the local python/uv.lock for cloud↔local reproducibility.
+      - jax[cpu]==0.10.1
+      - equinox==0.13.8
+      - optax==0.2.8
       # The Azure ML inference HTTP server (init/run host). Required for managed
-      # online deployments built on a non-inference base image.
+      # online deployments built on a non-inference base image. Not in the local
+      # uv.lock (cloud-only dep) — version resolves at provision time, guarded by
+      # the Docker smoke test.
       - azureml-inference-server-http
