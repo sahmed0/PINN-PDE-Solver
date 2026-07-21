@@ -24,6 +24,7 @@ is unchanged and needs no Azure SDK.
 """
 
 import argparse
+import contextlib
 import json
 import os
 import sys
@@ -202,44 +203,46 @@ def main(argv=None):
                         "(e.g. 'baseline'/'weak').")
     args = p.parse_args(argv)
 
-    tmp = None
-    if args.run_id:
-        tmp = tempfile.mkdtemp(prefix="gate_model_")
-        model_dir = _resolve_model_dir(args.run_id, tmp)
-        source_run_id = args.run_id
-    else:
-        model_dir = args.model_dir
-        source_run_id = "local"
-
-    result = run_gate(model_dir, args.threshold, args.threshold_ood, source_run_id)
-
-    with open(args.output, "w", encoding="utf-8") as f:
-        json.dump(result, f, indent=2, default=str)
-
-    print(_verdict_text(result))
-    print(f"Wrote {args.output}")
-
-    # If invoked inside an active MLflow run, record
-    # the gate metrics + outcome on that run. Standalone local runs have none.
-    if mlflow.active_run() is not None:
-        mlflow.log_metrics({
-            "gate_mean_rel_l2": result["mean_rel_l2"],
-            "gate_mean_rel_l2_ood": result["mean_rel_l2_ood"],
-        })
-        mlflow.set_tag("gate_passed", str(result["passed"]).lower())
-
-    # Promote only on PASS. The registry holds only models that
-    # cleared the gate — a failing run logs its failure and registers nothing.
-    if args.register:
-        if result["passed"]:
-            version = register_model(
-                result, model_dir, args.model_name, args.config_name
-            )
-            print(f"Registered '{args.model_name}' version {version}")
+    # ExitStack owns the temp dir (only created for --run-id) so it is cleaned up
+    # even on error, while keeping model_dir alive through registration below.
+    with contextlib.ExitStack() as stack:
+        if args.run_id:
+            tmp = stack.enter_context(tempfile.TemporaryDirectory(prefix="gate_model_"))
+            model_dir = _resolve_model_dir(args.run_id, tmp)
+            source_run_id = args.run_id
         else:
-            print("GATE FAILED — not registering (registry holds passing models only).")
+            model_dir = args.model_dir
+            source_run_id = "local"
 
-    return 0 if result["passed"] else 1
+        result = run_gate(model_dir, args.threshold, args.threshold_ood, source_run_id)
+
+        with open(args.output, "w", encoding="utf-8") as f:
+            json.dump(result, f, indent=2, default=str)
+
+        print(_verdict_text(result))
+        print(f"Wrote {args.output}")
+
+        # If invoked inside an active MLflow run, record
+        # the gate metrics + outcome on that run. Standalone local runs have none.
+        if mlflow.active_run() is not None:
+            mlflow.log_metrics({
+                "gate_mean_rel_l2": result["mean_rel_l2"],
+                "gate_mean_rel_l2_ood": result["mean_rel_l2_ood"],
+            })
+            mlflow.set_tag("gate_passed", str(result["passed"]).lower())
+
+        # Promote only on PASS. The registry holds only models that
+        # cleared the gate — a failing run logs its failure and registers nothing.
+        if args.register:
+            if result["passed"]:
+                version = register_model(
+                    result, model_dir, args.model_name, args.config_name
+                )
+                print(f"Registered '{args.model_name}' version {version}")
+            else:
+                print("GATE FAILED — not registering (registry holds passing models only).")
+
+        return 0 if result["passed"] else 1
 
 
 if __name__ == "__main__":
