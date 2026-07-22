@@ -1507,6 +1507,7 @@ dependencies = [
 [package.dev-dependencies]
 dev = [
     { name = "pytest" },
+    { name = "pyyaml" },
 ]
 mlops = [
     { name = "azure-ai-ml" },
@@ -1523,7 +1524,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.0" }]
+dev = [
+    { name = "pytest", specifier = ">=8.0" },
+    { name = "pyyaml", specifier = ">=6" },
+]
 mlops = [
     { name = "azure-ai-ml", specifier = ">=1.0" },
     { name = "azure-identity", specifier = ">=1.0" },
