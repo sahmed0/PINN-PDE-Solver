@@ -89,5 +89,46 @@ def test_malformed_inputs_return_error(tmp_path, monkeypatch):
 def test_grid_mode_rejects_bad_spec(tmp_path, monkeypatch):
     _init_with_tiny_model(tmp_path, monkeypatch)
     assert "error" in score.run(json.dumps({"grid": {"nx": 10}}))          # no alpha
-    assert "error" in score.run(json.dumps({"grid": {"alpha": -1.0}}))     # alpha <= 0
+    assert "error" in score.run(json.dumps({"grid": {"alpha": -1.0}}))     # outside band
     assert "error" in score.run(json.dumps({"grid": {"alpha": 0.05, "nx": 1}}))  # nx < 2
+
+
+def test_grid_mode_rejects_oversized_grid(tmp_path, monkeypatch):
+    _init_with_tiny_model(tmp_path, monkeypatch)
+    resp = score.run(json.dumps({"grid": {"alpha": 0.05, "nx": 100000, "nt": 100000}}))
+    assert "error" in resp
+    assert "cap" in resp["error"]  # the message names the MAX_GRID_POINTS cap
+
+
+def test_alpha_serving_band_rejects_below_floor(tmp_path, monkeypatch):
+    _init_with_tiny_model(tmp_path, monkeypatch)
+    resp = score.run(json.dumps({"inputs": [[0.5, 0.5, 0.001]]}))
+    assert "error" in resp
+    assert "serving range" in resp["error"]  # the message names the band
+
+
+def test_ood_flag_present_only_when_out_of_trained_range(tmp_path, monkeypatch):
+    _init_with_tiny_model(tmp_path, monkeypatch)
+    # alpha 0.12 is inside the serving band but outside the trained [0.01, 0.1] range.
+    ood = score.run(json.dumps({"inputs": [[0.5, 0.5, 0.12]]}))
+    assert "predictions" in ood
+    assert ood["ood"] is True
+    assert "ood_note" in ood
+    # alpha 0.05 is in-distribution -> no ood keys (response byte-stable for old clients).
+    indist = score.run(json.dumps({"inputs": [[0.5, 0.5, 0.05]]}))
+    assert "ood" not in indist
+    assert "ood_note" not in indist
+
+
+def test_health_echo_before_and_after_init(tmp_path, monkeypatch):
+    # Before init: the module global is unset, but health still answers.
+    monkeypatch.setattr(score, "_MODEL", None)
+    before = score.run(json.dumps({"health": True}))
+    assert before["status"] == "ok"
+    assert before["model_loaded"] is False
+    assert before["format"] == "tanh-mlp-heat-v2"
+    # After init: model_loaded flips to True.
+    _init_with_tiny_model(tmp_path, monkeypatch)
+    after = score.run(json.dumps({"health": True}))
+    assert after["status"] == "ok"
+    assert after["model_loaded"] is True

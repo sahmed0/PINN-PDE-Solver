@@ -35,6 +35,10 @@ ALPHA_RANGE = (0.01, 0.1)
 X_RANGE = (-1.0, 1.0)
 T_RANGE = (0.0, 1.0)
 
+# --- Serving-time input policy (see score.py) -----------------------------
+MAX_GRID_POINTS = 250_000            # nx*nt cap: bounds memory on a DS2_v2
+ALPHA_SERVING_RANGE = (0.005, 0.15)  # reject outside; trained range + gated-OOD margin
+
 # --- MLflow logging cadence -----------------------------------------------
 LOG_EVERY = 100  # log metrics every N epochs (matches existing print cadence)
 
