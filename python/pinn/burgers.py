@@ -107,29 +107,18 @@ def burgers_residual(model, x, t):
     return u_t + u * u_x - NU * u_xx
 
 
-def compute_burgers_loss(model, collocation_points, ic_points, bc_points,
-                         w_ic=10.0, w_bc=10.0):
+def compute_burgers_loss(model, collocation_points):
     """
-    Total loss: PDE residual MSE + IC MSE + BC MSE.
+    Training loss: the PDE residual MSE.
 
-    As with the heat model, the ansatz enforces the IC/BCs exactly, so loss_ic
-    and loss_bc are structurally ~0 and contribute no gradient. They are kept
-    only as a cheap wiring check; the PDE residual is what trains the network.
+    As with the heat model, the ansatz enforces the IC/BCs exactly, so IC/BC
+    terms would be structurally ~0 and contribute no gradient. Only the PDE
+    residual trains the network, so that is all this loss computes.
     """
     x_c, t_c = collocation_points[:, 0], collocation_points[:, 1]
     vmap_residual = jax.vmap(burgers_residual, in_axes=(None, 0, 0))
     residuals = vmap_residual(model, x_c, t_c)
-    loss_pde = jnp.mean(residuals ** 2)
-
-    X_ic, u_ic_true = ic_points
-    u_ic_pred = jax.vmap(model)(X_ic)
-    loss_ic = jnp.mean((u_ic_pred - u_ic_true) ** 2)
-
-    X_bc, u_bc_true = bc_points
-    u_bc_pred = jax.vmap(model)(X_bc)
-    loss_bc = jnp.mean((u_bc_pred - u_bc_true) ** 2)
-
-    return loss_pde + w_ic * loss_ic + w_bc * loss_bc
+    return jnp.mean(residuals ** 2)
 
 
 def generate_burgers_data(key, num_collocation=2000, num_bc=100, num_ic=100):
@@ -197,11 +186,10 @@ def burgers_reference(nu=None, nx=512, nt=100, nx_out=100):
 
 
 @eqx.filter_jit
-def train_burgers_step(model, opt_state, optimizer, collocation_points,
-                       ic_points, bc_points):
+def train_burgers_step(model, opt_state, optimizer, collocation_points):
     """Executes a single compiled optimisation step."""
     loss_val, grads = eqx.filter_value_and_grad(compute_burgers_loss)(
-        model, collocation_points, ic_points, bc_points
+        model, collocation_points
     )
     updates, opt_state = optimizer.update(grads, opt_state, model)
     model = eqx.apply_updates(model, updates)
@@ -221,13 +209,15 @@ def train_burgers(key, epochs=20000, lr=1e-3, num_collocation=2000):
     optimizer = optax.adam(schedule)
     opt_state = optimizer.init(eqx.filter(model, eqx.is_array))
 
-    collocation_points, ic_points, bc_points = generate_burgers_data(
+    # IC/BC points are enforced exactly by the ansatz, so training only needs
+    # the collocation points (see compute_burgers_loss).
+    collocation_points, _ic_points, _bc_points = generate_burgers_data(
         key, num_collocation=num_collocation
     )
 
     for epoch in range(epochs):
         model, opt_state, loss = train_burgers_step(
-            model, opt_state, optimizer, collocation_points, ic_points, bc_points
+            model, opt_state, optimizer, collocation_points
         )
 
         if epoch % 200 == 0 or epoch == epochs - 1:

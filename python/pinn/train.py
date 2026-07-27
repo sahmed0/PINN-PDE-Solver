@@ -51,10 +51,10 @@ def generate_training_data(key, num_collocation=1000, num_bc=100, num_ic=100):
     return collocation_points, ic_points, bc_points
 
 @eqx.filter_jit
-def train_step(model, opt_state, optimizer, collocation_points, ic_points, bc_points):
+def train_step(model, opt_state, optimizer, collocation_points):
     """Executes a single compiled optimization step."""
     loss_val, grads = eqx.filter_value_and_grad(compute_loss)(
-        model, collocation_points, ic_points, bc_points
+        model, collocation_points
     )
     # Calculate updates and apply them
     updates, opt_state = optimizer.update(grads, opt_state, model)
@@ -102,7 +102,7 @@ def train(model, key, epochs=20000, lr=1e-3, validate=True,
 
     for epoch in range(epochs):
         model, opt_state, loss = train_step(
-            model, opt_state, optimizer, collocation_points, ic_points, bc_points
+            model, opt_state, optimizer, collocation_points
         )
 
         if epoch % 100 == 0 or epoch == epochs - 1:

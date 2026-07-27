@@ -29,12 +29,12 @@ def test_burgers_residual_is_finite():
 
 def test_compute_burgers_loss_finite_with_gradients():
     model = BurgersPINN(jr.PRNGKey(2))
-    collocation_points, ic_points, bc_points = generate_burgers_data(
+    collocation_points, _ic_points, _bc_points = generate_burgers_data(
         jr.PRNGKey(3), num_collocation=50, num_bc=20, num_ic=20
     )
 
     loss_val, grads = eqx.filter_value_and_grad(compute_burgers_loss)(
-        model, collocation_points, ic_points, bc_points
+        model, collocation_points
     )
 
     assert loss_val.ndim == 0
@@ -46,6 +46,22 @@ def test_compute_burgers_loss_finite_with_gradients():
             found = True
             assert not jnp.isnan(leaf).any()
     assert found, "No gradients were computed."
+
+
+def test_burgers_ansatz_makes_ic_bc_exact():
+    # The hard-constraint ansatz enforces the IC/BCs exactly for ANY model, so the
+    # IC and BC MSE must be ~0 even for an untrained BurgersPINN. burgers.py has no
+    # loss-components helper, so the two terms are computed inline here.
+    model = BurgersPINN(jr.PRNGKey(5))
+    _collocation, ic_points, bc_points = generate_burgers_data(
+        jr.PRNGKey(6), num_collocation=50, num_bc=40, num_ic=40
+    )
+    X_ic, u_ic = ic_points
+    X_bc, u_bc = bc_points
+    loss_ic = float(jnp.mean((jax.vmap(model)(X_ic) - u_ic) ** 2))
+    loss_bc = float(jnp.mean((jax.vmap(model)(X_bc) - u_bc) ** 2))
+    assert loss_ic < 1e-10
+    assert loss_bc < 1e-10
 
 
 def test_burgers_reference_shape_and_bc():
