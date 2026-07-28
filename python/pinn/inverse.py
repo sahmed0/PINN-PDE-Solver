@@ -22,7 +22,8 @@ unbiased estimator could achieve. The pieces below are designed to reach it:
   * alpha gets its own, faster optimiser (it is one tiny-magnitude scalar with a
     weak gradient, so it needs a larger step than the network weights);
   * an L-BFGS polish after Adam seats alpha exactly at the data optimum, pulling
-    the spread of estimates down onto the CRLB floor.
+    the spread of estimates down to within ~1.6x of the CRLB floor
+    (measured: std 3.97e-4 vs bound 2.44e-4).
 
 InversePINN is deliberately separate from ParametricPINN: its MLP takes only
 [x, t] and it carries its own alpha leaf, so none of the forward training code is
