@@ -127,19 +127,24 @@ def generate_burgers_data(key, num_collocation=2000, num_bc=100, num_ic=100):
     train.generate_training_data but every point is just [x, t] (nu is fixed).
     Domains: x in [-1, 1], t in [0, 1].
     """
+    # Collocation stream keyed as before (split(key, 2)); IC/BC keys derived from
+    # a folded-in copy of the seed so --seed controls all sampling (they previously
+    # used hardcoded PRNGKeys).
     k_x, k_t = jr.split(key, 2)
+    k_ic_x, k_bc_t, k_bc_side = jr.split(jr.fold_in(key, 1), 3)
+
     x_c = jr.uniform(k_x, (num_collocation, 1), minval=-1.0, maxval=1.0)
     t_c = jr.uniform(k_t, (num_collocation, 1), minval=0.0, maxval=1.0)
     collocation_points = jnp.hstack([x_c, t_c])
 
-    x_ic = jr.uniform(jr.PRNGKey(24), (num_ic, 1), minval=-1.0, maxval=1.0)
+    x_ic = jr.uniform(k_ic_x, (num_ic, 1), minval=-1.0, maxval=1.0)
     t_ic = jnp.zeros((num_ic, 1))
     X_ic = jnp.hstack([x_ic, t_ic])
     u_ic = -jnp.sin(jnp.pi * x_ic)
     ic_points = (X_ic, u_ic)
 
-    t_bc = jr.uniform(jr.PRNGKey(26), (num_bc, 1), minval=0.0, maxval=1.0)
-    x_bc = jnp.where(jr.bernoulli(jr.PRNGKey(28), 0.5, (num_bc, 1)), 1.0, -1.0)
+    t_bc = jr.uniform(k_bc_t, (num_bc, 1), minval=0.0, maxval=1.0)
+    x_bc = jnp.where(jr.bernoulli(k_bc_side, 0.5, (num_bc, 1)), 1.0, -1.0)
     X_bc = jnp.hstack([x_bc, t_bc])
     u_bc = jnp.zeros((num_bc, 1))
     bc_points = (X_bc, u_bc)

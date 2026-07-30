@@ -63,9 +63,7 @@ def main(argv=None):
 
     logging_utils.setup_mlflow(args.tracking_uri, args.experiment_name)
 
-    # Reproducibility caveat: --seed controls model init + collocation sampling,
-    # but IC/BC points use hardcoded PRNGKeys in generate_training_data. Pre-existing
-    # and harmless (IC/BC contribute no gradient).
+    # --seed now controls all sampling (model init, collocation, and IC/BC points).
     key = jr.PRNGKey(args.seed)
     model_key, train_key = jr.split(key)
     model = ParametricPINN(model_key, width_size=args.width_size, depth=args.depth)

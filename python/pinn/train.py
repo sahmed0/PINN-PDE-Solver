@@ -15,20 +15,25 @@ def generate_training_data(key, num_collocation=1000, num_bc=100, num_ic=100):
     Generates synthetic training data using uniform random sampling.
     Domains: x in [-1, 1], t in [0, 1], alpha in [0.01, 0.1].
     """
+    # Keep the collocation stream keyed exactly as before (split(key, 3)) so runs
+    # made before the IC/BC seeding fix stay bit-for-bit reproducible. The IC/BC
+    # keys are derived from a folded-in copy of the seed so --seed now controls
+    # ALL sampling (previously they used hardcoded PRNGKeys).
     k1, k2, k3 = jr.split(key, 3)
-    
+    k_ic_x, k_ic_a, k_bc_t, k_bc_a, k_bc_side = jr.split(jr.fold_in(key, 1), 5)
+
     # 1. Collocation Points
     # Scale uniform [0, 1] to specific ranges
     x_c = jr.uniform(k1, (num_collocation, 1), minval=-1.0, maxval=1.0)
     t_c = jr.uniform(k2, (num_collocation, 1), minval=0.0, maxval=1.0)
     alpha_c = jr.uniform(k3, (num_collocation, 1), minval=0.01, maxval=0.1)
     collocation_points = jnp.hstack([x_c, t_c, alpha_c])
-    
+
     # 2. Initial Condition Points (t = 0)
     # Using the same domains for x and alpha
-    x_ic = jr.uniform(jr.PRNGKey(4), (num_ic, 1), minval=-1.0, maxval=1.0)
+    x_ic = jr.uniform(k_ic_x, (num_ic, 1), minval=-1.0, maxval=1.0)
     t_ic = jnp.zeros((num_ic, 1))
-    alpha_ic = jr.uniform(jr.PRNGKey(5), (num_ic, 1), minval=0.01, maxval=0.1)
+    alpha_ic = jr.uniform(k_ic_a, (num_ic, 1), minval=0.01, maxval=0.1)
     X_ic = jnp.hstack([x_ic, t_ic, alpha_ic])
     # Non-trivial initial profile u(x, 0) = sin(pi * x).
     # This vanishes at x = +/-1 so it is consistent with the zero boundary
@@ -39,11 +44,11 @@ def generate_training_data(key, num_collocation=1000, num_bc=100, num_ic=100):
     ic_points = (X_ic, u_ic)
     
     # 3. Boundary Condition Points (x = -1 and x = 1)
-    t_bc = jr.uniform(jr.PRNGKey(6), (num_bc, 1), minval=0.0, maxval=1.0)
-    alpha_bc = jr.uniform(jr.PRNGKey(7), (num_bc, 1), minval=0.01, maxval=0.1)
-    
+    t_bc = jr.uniform(k_bc_t, (num_bc, 1), minval=0.0, maxval=1.0)
+    alpha_bc = jr.uniform(k_bc_a, (num_bc, 1), minval=0.01, maxval=0.1)
+
     # Half points at x=-1, half at x=1
-    x_bc = jnp.where(jr.bernoulli(jr.PRNGKey(8), 0.5, (num_bc, 1)), 1.0, -1.0)
+    x_bc = jnp.where(jr.bernoulli(k_bc_side, 0.5, (num_bc, 1)), 1.0, -1.0)
     X_bc = jnp.hstack([x_bc, t_bc, alpha_bc])
     u_bc = jnp.zeros((num_bc, 1)) # Assuming u(boundary, t) = 0
     bc_points = (X_bc, u_bc)
