@@ -465,7 +465,7 @@ def run_inverse_demo(alpha_true=0.042, epochs=2000, seed=0, n_seeds=8,
 
     mean, std, crlb = stats["mean"], stats["std"], stats["crlb_std"]
     bias = mean - alpha_true
-    print("\nInverse problem report (over %d noise realisations):" % n_seeds)
+    print(f"\nInverse problem report (over {n_seeds} noise realisations):")
     print(f"    true alpha        : {alpha_true:.5f}")
     print(f"    recovered alpha   : {mean:.5f} +/- {std:.5f}  (1 sigma)")
     print(f"    relative error    : {abs(bias) / alpha_true * 100:.2f}% (bias) "

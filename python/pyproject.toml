@@ -20,6 +20,7 @@ packages = ["pinn", "mlops"]
 [dependency-groups]
 dev = [
     "pytest>=8.0",
+    "ruff>=0.8",
     "pyyaml>=6",
 ]
 mlops = [
@@ -27,3 +28,18 @@ mlops = [
     "azure-ai-ml>=1.0",
     "azure-identity>=1.0",
 ]
+
+[tool.pytest.ini_options]
+testpaths = ["pytests"]
+markers = ["slow: long training runs, excluded from the push CI job"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E4", "E7", "E9", "F", "I", "UP", "B"]
+# E402: score.py keeps a single sys.path bootstrap so the Azure inference container
+# (which mounts the code dir but pip-installs nothing) can import the packages.
+[tool.ruff.lint.per-file-ignores]
+"mlops/score.py" = ["E402"]

@@ -48,7 +48,7 @@ def test_points_mode_exact_at_t0(tmp_path, monkeypatch):
     preds = resp["predictions"]
     assert len(preds) == 3
     assert all(isinstance(v, float) for v in preds)
-    for (x, _t, _a), u in zip(rows, preds):
+    for (x, _t, _a), u in zip(rows, preds, strict=True):
         assert math.isclose(u, math.sin(math.pi * x), abs_tol=1e-5)
 
 
@@ -68,7 +68,7 @@ def test_grid_mode_shape_and_t0_row(tmp_path, monkeypatch):
     assert len(resp["t"]) == nt
     assert len(resp["u"]) == nt and all(len(row) == nx for row in resp["u"])
     # Row 0 is t=0 -> exact sin(pi x) across the x axis.
-    for x, u in zip(resp["x"], resp["u"][0]):
+    for x, u in zip(resp["x"], resp["u"][0], strict=True):
         assert math.isclose(u, math.sin(math.pi * x), abs_tol=1e-5)
 
 

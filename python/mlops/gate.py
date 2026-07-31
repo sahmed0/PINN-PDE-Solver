@@ -29,7 +29,7 @@ import json
 import os
 import sys
 import tempfile
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 import mlflow
 
@@ -59,7 +59,7 @@ def run_gate(model_dir, threshold, threshold_ood, source_run_id="local"):
         "per_alpha_rel_l2": metrics["per_alpha_rel_l2"],
         "per_alpha_linf": metrics["per_alpha_linf"],
         "source_run_id": source_run_id,
-        "evaluated_at": datetime.now(timezone.utc).isoformat(),
+        "evaluated_at": datetime.now(UTC).isoformat(),
     }
 
 
