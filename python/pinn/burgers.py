@@ -24,8 +24,20 @@ import numpy as np
 import optax
 from jax.experimental.ode import odeint
 
+from pinn.json_forward import forward_from_payload
+
 # Raissi viscosity; the near-shock forms around t ~ 0.7 at this value.
 NU = 0.01 / jnp.pi
+
+# Fixed [x, t] rows whose float64 reference outputs are embedded in every export
+# as "test_vectors" (see json_forward and the parity tests). They cover t=0,
+# x=+/-1, the near-shock band t~0.7-0.85, and interior points.
+BURGERS_PARITY_INPUTS = [
+    [-0.4, 0.0], [0.8, 0.0],
+    [1.0, 0.5], [-1.0, 0.9],
+    [0.0, 0.7], [0.1, 0.75], [-0.05, 0.8], [0.15, 0.85],
+    [0.5, 0.3], [-0.65, 0.55], [0.33, 0.95], [-0.9, 0.15],
+]
 
 # nu is fixed here (not a network input), so the inputs are only [x, t]. x is
 # already in [-1, 1]; t in [0, 1] is centred/scaled to ~[-1, 1] before the MLP.
@@ -304,6 +316,17 @@ def export_burgers_to_json(model, filepath, nu=None, nx=100, nt=100):
         "rel_l2": metrics["rel_l2"],
         "linf": metrics["linf"],
         "layers": layers,
+    }
+
+    # Golden parity vectors: float64 reference outputs computed from the payload
+    # above, mirroring train.export_to_json.
+    inputs = np.asarray(BURGERS_PARITY_INPUTS, dtype=np.float64)
+    outputs = forward_from_payload(payload, inputs)
+    payload["test_vectors"] = {
+        "dtype": "float64",
+        "note": "reference outputs from a float64 NumPy forward pass over this file's weights",
+        "inputs": inputs.tolist(),
+        "outputs": outputs.tolist(),
     }
 
     print(f"Exporting Burgers' model to {filepath}...")

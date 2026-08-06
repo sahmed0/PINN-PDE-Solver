@@ -7,7 +7,27 @@ import numpy as np
 import optax
 
 from pinn.analytical import relative_l2_error
+from pinn.json_forward import forward_from_payload
 from pinn.physics import compute_loss, compute_loss_components
+
+# Fixed [x, t, alpha] rows whose float64 reference outputs are embedded in every
+# exported model as "test_vectors". They pin the TS forward pass and the scoring
+# endpoint to this JSON contract (see json_forward and the parity tests). The rows
+# cover t=0, x=+/-1, the alpha edges, the gate's OOD alphas, and irregular interior
+# points; keep them stable so old exports stay comparable.
+PARITY_INPUTS = [
+    [-0.7, 0.0, 0.055], [0.3, 0.0, 0.01],
+    [1.0, 0.5, 0.05], [-1.0, 0.25, 0.1],
+    [0.5, 1.0, 0.01], [-0.5, 1.0, 0.1],
+    [0.25, 0.5, 0.007], [0.25, 0.5, 0.12],
+    [0.123, 0.456, 0.033], [-0.987, 0.001, 0.099],
+    [0.001, 0.999, 0.0123], [0.777, 0.333, 0.071],
+    [-0.333, 0.667, 0.047], [0.9, 0.9, 0.089],
+    [-0.6, 0.1, 0.023], [0.05, 0.55, 0.055],
+    [-0.25, 0.75, 0.06], [0.65, 0.2, 0.085],
+    [-0.85, 0.85, 0.015], [0.45, 0.05, 0.095],
+]
+
 
 def generate_training_data(key, num_collocation=1000, num_bc=100, num_ic=100):
     """
@@ -144,6 +164,10 @@ def export_to_json(model, filepath="pinn_model.json"):
     - "ansatz" = "heat_dirichlet_sin": reconstruct the temperature from the MLP
       output N as  u = sin(pi x) + (1 - x^2) * t * N,  which makes the IC/BCs
       exact. The format string is bumped accordingly so stale consumers fail loudly.
+
+    A "test_vectors" block is also embedded: the float64 reference outputs of a
+    fixed set of inputs (PARITY_INPUTS), computed from these very weights. Both
+    consumers are tested against it so any drift in a re-implementation is caught.
     """
     layers = []
     for layer in model.mlp.layers:
@@ -172,6 +196,17 @@ def export_to_json(model, filepath="pinn_model.json"):
         # Hard-constraint reconstruction: u = sin(pi x) + (1 - x^2) * t * N.
         "ansatz": "heat_dirichlet_sin",
         "layers": layers,
+    }
+
+    # Golden parity vectors: float64 reference outputs computed from the payload
+    # above, so any consumer of this JSON can be pinned to it.
+    inputs = np.asarray(PARITY_INPUTS, dtype=np.float64)
+    outputs = forward_from_payload(payload, inputs)
+    payload["test_vectors"] = {
+        "dtype": "float64",
+        "note": "reference outputs from a float64 NumPy forward pass over this file's weights",
+        "inputs": inputs.tolist(),
+        "outputs": outputs.tolist(),
     }
 
     print(f"Exporting model weights to {filepath}...")
