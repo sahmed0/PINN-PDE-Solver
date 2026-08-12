@@ -45,7 +45,7 @@ export async function loadModel(url = '/pinn_model.json'): Promise<PINNModel> {
 //   2. Run the tanh-MLP (tanh after every layer except the linear output).
 //   3. Reconstruct u via the hard-constraint ansatz so the IC/BCs are exact:
 //        u = sin(pi x) + (1 - x^2) * t * N
-function forwardOne(model: PINNModel, input: number[]): number {
+export function forwardOne(model: PINNModel, input: number[]): number {
   const x = input[0];
   const t = input[1];
 
@@ -259,7 +259,7 @@ export async function loadBurgersModel(url = '/burgers_model.json'): Promise<Bur
 
 // Forward pass for a single [x, t] -> u. Mirrors forwardOne but with 2 inputs
 // and the Burgers' ansatz  u = -sin(pi x) + (1 - x^2) * t * N.
-function forwardBurgers(model: BurgersModel, input: number[]): number {
+export function forwardBurgers(model: BurgersModel, input: number[]): number {
   const x = input[0];
   const t = input[1];
 
