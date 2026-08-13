@@ -1,5 +1,7 @@
 # PINN PDE Solver – with an Azure MLOps production pipeline
 
+![CI](https://github.com/sahmed0/PDE-solver/actions/workflows/ci.yml/badge.svg?branch=main)
+
 > A physics-informed neural network that solves the 1D heat equation to **2.5 × 10⁻⁴** relative L2 error,
 > wrapped in an end-to-end Azure ML pipeline whose decision point is an **evaluation gate** – so the
 > model registry only ever contains models that earned their place.

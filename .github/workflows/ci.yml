@@ -1,0 +1,46 @@
+name: CI
+
+# Push CI proves the offline story on every change: the Python suite (offline,
+# Azure mocked) + ruff lint, and the frontend lint + production build.
+#
+# Lint is ruff *check* only — deliberately no `ruff format`. Reformatting the whole
+# codebase would destroy git blame and produce a giant no-op diff; lint-only was the
+# considered choice.
+
+on:
+  push:
+    branches: [main, mlops]
+  pull_request:
+
+jobs:
+  python:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev --group mlops
+      - run: uv run ruff check .
+      - run: uv run pytest -m "not slow"
+
+  frontend:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: frontend/pnpm-lock.yaml
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm lint
+      - run: pnpm test
+      - run: pnpm build
