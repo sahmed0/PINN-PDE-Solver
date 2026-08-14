@@ -202,6 +202,32 @@ def burgers_reference(nu=None, nx=512, nt=100, nx_out=100):
     return x_out, t_grid, u_grid
 
 
+def reference_uncertainty(nx_coarse=512, nx_fine=2048, nx_out=100, nt=100, nu=None):
+    """Grid-refinement error bar of the method-of-lines reference solution.
+
+    The shipped reference is integrated on an nx=512 spatial grid. To quantify
+    its own discretisation error we recompute it on a 4x-finer nx=2048 grid and
+    compare the two on the same nx_out/nt output grid. The near-shock region is
+    where the coarse grid is least resolved, so this bounds how much of the
+    PINN's quoted rel-L2 is really the reference's error rather than the model's.
+
+    Returns a dict {"rel_l2_512_vs_2048", "linf_512_vs_2048", "note"} suitable
+    for embedding directly into the exported JSON.
+    """
+    _, _, u_coarse = burgers_reference(nu=nu, nx=nx_coarse, nt=nt, nx_out=nx_out)
+    _, _, u_fine = burgers_reference(nu=nu, nx=nx_fine, nt=nt, nx_out=nx_out)
+
+    diff = u_coarse - u_fine
+    rel_l2 = float(jnp.linalg.norm(diff) / jnp.linalg.norm(u_fine))
+    linf = float(jnp.max(jnp.abs(diff)))
+    return {
+        "rel_l2_512_vs_2048": rel_l2,
+        "linf_512_vs_2048": linf,
+        "note": ("grid-refinement error bar of the embedded nx=512 "
+                 "method-of-lines reference"),
+    }
+
+
 @eqx.filter_jit
 def train_burgers_step(model, opt_state, optimizer, collocation_points):
     """Executes a single compiled optimisation step."""
@@ -270,7 +296,8 @@ def evaluate_burgers(model, nu=None, nx=100, nt=100):
     }
 
 
-def export_burgers_to_json(model, filepath, nu=None, nx=100, nt=100):
+def export_burgers_to_json(model, filepath, nu=None, nx=100, nt=100,
+                           include_refinement=False):
     """
     Export the trained Burgers' MLP plus the embedded reference field.
 
@@ -280,6 +307,11 @@ def export_burgers_to_json(model, filepath, nu=None, nx=100, nt=100):
     (u = -sin(pi x) + (1 - x^2) * t * N); see frontend/src/lib/inference.ts.
     The method-of-lines reference is embedded under "reference" as the ground
     truth, with rel_l2 / linf measured against it.
+
+    When `include_refinement` is set, a "reference_uncertainty" block (a
+    grid-refinement error bar of the nx=512 reference against an nx=2048 solve)
+    is embedded too. It is off by default because the extra nx=2048 integration
+    roughly doubles export time.
     """
     if nu is None:
         nu = NU
@@ -328,6 +360,9 @@ def export_burgers_to_json(model, filepath, nu=None, nx=100, nt=100):
         "inputs": inputs.tolist(),
         "outputs": outputs.tolist(),
     }
+
+    if include_refinement:
+        payload["reference_uncertainty"] = reference_uncertainty(nu=nu, nx_out=nx, nt=nt)
 
     print(f"Exporting Burgers' model to {filepath}...")
     with open(filepath, "w", encoding="utf-8") as f:
