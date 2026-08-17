@@ -243,6 +243,13 @@ export interface BurgersModel {
   rel_l2: number;
   linf: number;
   layers: PINNLayer[];
+  // Optional grid-refinement error bar of the embedded reference (nx=512 vs
+  // nx=2048); present once scripts/burgers_refinement.py has been run.
+  reference_uncertainty?: {
+    rel_l2_512_vs_2048: number;
+    linf_512_vs_2048: number;
+    note: string;
+  };
 }
 
 export async function loadBurgersModel(url = '/burgers_model.json'): Promise<BurgersModel> {
