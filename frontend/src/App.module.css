@@ -184,10 +184,70 @@
   padding: 2rem;
 }
 
+/* Responsive plot container: fills the main area up to a comfortable cap and
+   scales with the viewport so the heatmap follows window resizes. */
+.plotWrap {
+  width: min(100%, 760px);
+  height: clamp(380px, 60vh, 560px);
+}
+
 .loading {
   font-size: 1.2rem;
   color: #6b7280;
   animation: pulse 1.5s infinite;
+}
+
+/* Per-tab load-failure card with a Retry action. */
+.errorCard {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 420px;
+  padding: 1.5rem 2rem;
+  background-color: #fff;
+  border: 1px solid #fecaca;
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  text-align: center;
+}
+
+.errorMessage {
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #b91c1c;
+  margin: 0;
+}
+
+.errorHint {
+  font-size: 0.8125rem;
+  color: #6b7280;
+  margin: 0;
+}
+
+.errorHint code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.75rem;
+  background-color: #f3f4f6;
+  padding: 0.1rem 0.35rem;
+  border-radius: 4px;
+}
+
+.retryButton {
+  margin-top: 0.25rem;
+  padding: 0.5rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: #ffffff;
+  background-color: #2563eb;
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.retryButton:hover {
+  background-color: #1d4ed8;
 }
 
 @keyframes pulse {
