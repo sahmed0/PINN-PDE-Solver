@@ -1,16 +1,5 @@
 // src/App.tsx
 import { useState, useEffect, useCallback } from 'react';
-import createPlotlyComponentImport from 'react-plotly.js/factory';
-import Plotly from 'plotly.js-dist-min';
-import type { Data } from 'plotly.js';
-
-// react-plotly.js/factory is CommonJS; under Vite's interop the function can
-// arrive on `.default` instead of as the module's default binding.
-const createPlotlyComponent =
-  (createPlotlyComponentImport as unknown as { default?: typeof createPlotlyComponentImport })
-    .default ?? createPlotlyComponentImport;
-
-const Plot = createPlotlyComponent(Plotly);
 import {
   loadModel,
   loadInverseResult,
@@ -23,32 +12,39 @@ import {
   errorGrid,
   computeErrorMetrics,
   type PINNModel,
-  type ErrorMetrics,
   type InverseResult,
   type BurgersModel,
 } from './lib/inference.ts';
+import {
+  buildTrace,
+  type PlotState,
+  type ViewMode,
+  type TabMode,
+} from './lib/plotting.ts';
+import { HeatmapPanel } from './components/HeatmapPanel.tsx';
+import { LoadErrorCard } from './components/LoadErrorCard.tsx';
+import { Sidebar } from './components/Sidebar.tsx';
+import { ForwardControls } from './components/ForwardControls.tsx';
+import { InverseControls } from './components/InverseControls.tsx';
+import { BurgersControls } from './components/BurgersControls.tsx';
 import styles from './App.module.css';
 
 // Resolution of our grid
 const NX = 50;
 const NT = 50;
 
-type ViewMode = 'pinn' | 'exact' | 'error';
-type TabMode = 'forward' | 'inverse' | 'burgers';
-
-interface PlotState {
-  pinn: number[][];
-  exact: number[][];
-  error: number[][];
-  metrics: ErrorMetrics;
-  x: number[];
-  y: number[];
+// Per-tab load failures. A tab whose model failed to load shows an error card
+// with a Retry button; the other tabs keep working (each model is independent).
+interface LoadErrors {
+  forward?: string;
+  inverse?: string;
+  burgers?: string;
 }
 
-const VIEW_LABELS: Record<ViewMode, string> = {
-  pinn: 'PINN',
-  exact: 'Exact',
-  error: 'Error',
+const LOAD_LABELS: Record<keyof LoadErrors, string> = {
+  forward: 'Failed to load the forward PINN.',
+  inverse: 'Failed to load the inverse result.',
+  burgers: "Failed to load the Burgers' model.",
 };
 
 function App() {
@@ -59,6 +55,7 @@ function App() {
   // The Burgers' fields don't depend on any slider (nu is fixed), so they are
   // computed once when the model loads rather than reactively on alpha changes.
   const [burgersPlotData, setBurgersPlotData] = useState<PlotState | null>(null);
+  const [loadErrors, setLoadErrors] = useState<LoadErrors>({});
   const [tab, setTab] = useState<TabMode>('forward');
   const [showObs, setShowObs] = useState<boolean>(true);
   const [alpha, setAlpha] = useState<number>(0.05); // Default thermal diffusivity
@@ -69,64 +66,41 @@ function App() {
   // overlaid observations sit on the field they were inferred from); on the
   // forward tab it follows the slider.
   const displayAlpha = tab === 'inverse' && inverse ? inverse.alpha_est : alpha;
-
-  // Data for Plotly
   const [plotData, setPlotData] = useState<PlotState | null>(null);
 
-  // --- 1. Load Model on Mount ---
-  useEffect(() => {
-    async function initModel() {
-      try {
-        console.log("Loading PINN weights...");
-        // Ensure pinn_model.json is inside your frontend/public folder
-        // (the Python pipeline writes it there automatically).
-        const m = await loadModel('/pinn_model.json');
-        setModel(m);
-        console.log("Model loaded successfully!");
-      } catch (err) {
-        console.error("Failed to load model. Did you run the Python training pipeline to create public/pinn_model.json?", err);
-      }
-    }
-    initModel();
-  }, []);
+  // --- 1. Load all three models (retryable) -----------------------------------
+  // Each model is loaded independently: a failure on one records a per-tab error
+  // (surfaced as an error card + Retry) without blocking the others.
+  const loadAll = useCallback(async () => {
+    const guard = (key: keyof LoadErrors, run: () => Promise<void>) =>
+      run()
+        .then(() => setLoadErrors((e) => ({ ...e, [key]: undefined })))
+        .catch((err: unknown) => {
+          const detail = err instanceof Error ? err.message : String(err);
+          setLoadErrors((e) => ({ ...e, [key]: `${LOAD_LABELS[key]} ${detail}` }));
+        });
 
-  // --- 1b. Load the inverse-problem result (recovered alpha + observations) ---
-  useEffect(() => {
-    async function initInverse() {
-      try {
-        const r = await loadInverseResult('/inverse_model.json');
-        setInverse(r);
-      } catch (err) {
-        // Non-fatal: the forward viewer works without it (run the Python
-        // pipeline to generate public/inverse_model.json).
-        console.error("Failed to load inverse result.", err);
-      }
-    }
-    initInverse();
-  }, []);
-
-  // --- 1c. Load the Burgers' model and compute its fields once on mount ---
-  useEffect(() => {
-    async function initBurgers() {
-      try {
+    await Promise.all([
+      guard('forward', async () => setModel(await loadModel('/pinn_model.json'))),
+      guard('inverse', async () => setInverse(await loadInverseResult('/inverse_model.json'))),
+      guard('burgers', async () => {
         const m = await loadBurgersModel('/burgers_model.json');
         setBurgersModel(m);
-
-        // The "Exact" field here is the embedded method-of-lines reference, not
-        // a closed form. PINN/error fields are derived from it on the same grid.
+        // The "Exact" field here is the embedded method-of-lines reference, not a
+        // closed form. PINN/error fields are derived from it on the same grid.
         const xVals = m.reference.x;
         const tVals = m.reference.t;
         const pinn = runBurgersInference(m, xVals, tVals);
         const exact = m.reference.u;
-        const error = errorGrid(pinn, exact);
         const metrics = computeErrorMetrics(pinn, exact);
-        setBurgersPlotData({ pinn, exact, error, metrics, x: xVals, y: tVals });
-      } catch (err) {
-        console.error("Failed to load Burgers' model.", err);
-      }
-    }
-    initBurgers();
+        setBurgersPlotData({ pinn, exact, error: errorGrid(pinn, exact), metrics, x: xVals, y: tVals });
+      }),
+    ]);
   }, []);
+
+  useEffect(() => {
+    void loadAll();
+  }, [loadAll]);
 
   // --- 2. Run Inference (and compute the analytical reference + error) ---
   // We use useCallback so the function doesn't recreate on every render
@@ -171,346 +145,54 @@ function App() {
       : buildTrace(view, activePlot)
     : null;
 
+  // The active tab's own model + error decide the main-area state: each tab is
+  // gated on the artifact it actually needs (inverse on the inverse result, not
+  // the heat MLP), so one failed load only darkens its own tab.
+  const activeModel = tab === 'burgers' ? burgersModel : tab === 'inverse' ? inverse : model;
+  const activeError = loadErrors[tab];
+
   // --- Render ---
   return (
     <div className={styles.container}>
-
       {/* SIDEBAR: Controls */}
-      <aside className={styles.sidebar}>
-        <div className={styles.header}>
-          <h1>Neural PDE Solver</h1>
-          <p>Physics-Informed Neural Network (1D Heat Equation)</p>
-        </div>
-
-        {/* Forward / Inverse / Burgers' problem tabs */}
-        <div className={`${styles.toggle} ${styles.tabBar}`}>
-          {(['forward', 'inverse', 'burgers'] as TabMode[]).map((mode) => (
-            <button
-              key={mode}
-              type="button"
-              className={tab === mode ? styles.toggleActive : styles.toggleButton}
-              onClick={() => setTab(mode)}
-              disabled={mode === 'burgers' ? !burgersModel : !model}
-            >
-              {mode === 'forward' ? 'Forward' : mode === 'inverse' ? 'Inverse' : "Burgers'"}
-            </button>
-          ))}
-        </div>
-
-        {/* View toggle (shared by both tabs) */}
-        <div className={styles.controlGroup}>
-          <label><span>View</span></label>
-          <div className={styles.toggle}>
-            {(Object.keys(VIEW_LABELS) as ViewMode[]).map((mode) => (
-              <button
-                key={mode}
-                type="button"
-                className={view === mode ? styles.toggleActive : styles.toggleButton}
-                onClick={() => setView(mode)}
-                disabled={tab === 'burgers' ? !burgersModel : !model}
-              >
-                {VIEW_LABELS[mode]}
-              </button>
-            ))}
-          </div>
-        </div>
-
+      <Sidebar
+        tab={tab}
+        setTab={setTab}
+        view={view}
+        setView={setView}
+        model={model}
+        burgersModel={burgersModel}
+        isInferencing={isInferencing}
+      >
         {tab === 'forward' && (
-          <>
-            <div className={styles.controlGroup}>
-              <label>
-                <span>Thermal Diffusivity (&alpha;)</span>
-                <span>{alpha.toFixed(3)}</span>
-              </label>
-              <input
-                type="range"
-                min="0.01"
-                max="0.1"
-                step="0.001"
-                value={alpha}
-                onChange={(e) => setAlpha(parseFloat(e.target.value))}
-                className={styles.slider}
-                disabled={!model}
-              />
-            </div>
-
-            {/* Live validation metrics vs. the analytical solution */}
-            <div className={styles.controlGroup}>
-              <label><span>Validation vs. analytical</span></label>
-              <div className={styles.metrics}>
-                <div className={styles.metricRow}>
-                  <span>Relative L&#8322;</span>
-                  <span className={styles.metricValue}>
-                    {plotData ? formatPct(plotData.metrics.relL2) : '-'}
-                  </span>
-                </div>
-                <div className={styles.metricRow}>
-                  <span>L&#8734; (max abs)</span>
-                  <span className={styles.metricValue}>
-                    {plotData ? plotData.metrics.linf.toExponential(2) : '-'}
-                  </span>
-                </div>
-              </div>
-              <p className={styles.metricNote}>
-                Compared against u(x,t) = sin(&pi;x)&middot;e<sup>&minus;&alpha;&pi;&sup2;t</sup>
-              </p>
-            </div>
-          </>
+          <ForwardControls model={model} alpha={alpha} setAlpha={setAlpha} plotData={plotData} />
         )}
-
         {tab === 'inverse' && (
-          <>
-            {/* Inverse problem: alpha recovered from sparse, noisy observations */}
-            <div className={styles.controlGroup}>
-              <label><span>Recovered &alpha;</span></label>
-              <div className={styles.metrics}>
-                <div className={styles.metricRow}>
-                  <span>True &alpha;</span>
-                  <span className={styles.metricValue}>
-                    {inverse ? inverse.alpha_true.toFixed(4) : '-'}
-                  </span>
-                </div>
-                <div className={styles.metricRow}>
-                  <span>Estimate (1&sigma;)</span>
-                  <span className={styles.metricValue}>
-                    {inverse
-                      ? inverse.alpha_std != null
-                        ? `${inverse.alpha_est.toFixed(4)} ± ${inverse.alpha_std.toFixed(4)}`
-                        : inverse.alpha_est.toFixed(4)
-                      : '-'}
-                  </span>
-                </div>
-                <div className={styles.metricRow}>
-                  <span>Cramér–Rao floor</span>
-                  <span className={styles.metricValue}>
-                    {inverse && inverse.crlb_std != null ? `± ${inverse.crlb_std.toFixed(4)}` : '-'}
-                  </span>
-                </div>
-              </div>
-              <label style={{ fontWeight: 400, cursor: inverse ? 'pointer' : 'not-allowed' }}>
-                <span>
-                  <input
-                    type="checkbox"
-                    checked={showObs}
-                    onChange={(e) => setShowObs(e.target.checked)}
-                    disabled={!inverse}
-                    style={{ marginRight: '0.5rem' }}
-                  />
-                  Show observations
-                </span>
-                <span className={styles.metricValue}>
-                  {inverse ? inverse.observations.length : '-'}
-                </span>
-              </label>
-              <p className={styles.metricNote}>
-                &alpha; recovered from {inverse ? inverse.observations.length : 'N'} noisy
-                measurements (overlaid as points). The ± band is the 1σ spread over
-                {inverse?.n_seeds ? ` ${inverse.n_seeds}` : ''} noise realisations;
-                the Cramér–Rao floor is the best precision any estimator could achieve
-                from this data
-                {inverse && inverse.crlb_std != null && inverse.alpha_std != null
-                  ? ` (we reach ${(inverse.alpha_std / inverse.crlb_std).toFixed(1)}× the floor).`
-                  : '.'}
-              </p>
-            </div>
-
-            {/* CRLB floor by experiment design */}
-            {inverse?.design_sweep && (
-              <div className={styles.controlGroup}>
-                <label><span>CRLB floor by experiment</span></label>
-                <table className={styles.sweepTable}>
-                  <thead>
-                    <tr>
-                      <th>N</th>
-                      <th>&sigma;</th>
-                      <th>t&#8804;</th>
-                      <th>Floor</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {inverse.design_sweep.map((r, i) => {
-                      const active =
-                        r.n_obs === inverse.n_obs &&
-                        Math.abs(r.sigma - (inverse.noise_sigma ?? r.sigma)) < 1e-9 &&
-                        Math.abs(r.t_max - 1.0) < 1e-9;
-                      return (
-                        <tr key={i} className={active ? styles.sweepActive : undefined}>
-                          <td>{r.n_obs}</td>
-                          <td>{r.sigma}</td>
-                          <td>{r.t_max}</td>
-                          <td>{r.rel_pct.toFixed(2)}%</td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-                <p className={styles.metricNote}>
-                  The information floor (best achievable 1σ on α, as % of α) versus
-                  the measurement design. The highlighted row is the live experiment;
-                  more points, lower noise, or a longer time window all lower it.
-                </p>
-              </div>
-            )}
-          </>
+          <InverseControls inverse={inverse} showObs={showObs} setShowObs={setShowObs} />
         )}
-
-        {tab === 'burgers' && (
-          <>
-            <div className={styles.controlGroup}>
-              <label>
-                <span>Viscosity (&nu;)</span>
-                <span>{burgersModel ? burgersModel.nu.toExponential(4) : '-'}</span>
-              </label>
-              <p className={styles.metricNote}>
-                Fixed at &nu; = 0.01/&pi; (Raissi et al. 2019). A near-shock forms
-                around t &asymp; 0.7 where the field steepens sharply.
-              </p>
-            </div>
-
-            {/* Accuracy vs. the method-of-lines reference (computed in Python) */}
-            <div className={styles.controlGroup}>
-              <label><span>Validation vs. reference</span></label>
-              <div className={styles.metrics}>
-                <div className={styles.metricRow}>
-                  <span>Relative L&#8322;</span>
-                  <span className={styles.metricValue}>
-                    {burgersModel ? formatPct(burgersModel.rel_l2) : '-'}
-                  </span>
-                </div>
-                <div className={styles.metricRow}>
-                  <span>L&#8734; (max abs)</span>
-                  <span className={styles.metricValue}>
-                    {burgersModel ? burgersModel.linf.toExponential(2) : '-'}
-                  </span>
-                </div>
-              </div>
-              <p className={styles.metricNote}>
-                u<sub>t</sub> + u&middot;u<sub>x</sub> = &nu;&middot;u<sub>xx</sub>.
-                &ldquo;Exact&rdquo; here is a method-of-lines numerical reference
-                (512-point grid integrated in time), not a closed form.
-              </p>
-            </div>
-          </>
-        )}
-
-        <div style={{ marginTop: 'auto', fontSize: '0.8rem', color: '#9ca3af' }}>
-          <p>Compute Backend: In-browser tanh-MLP</p>
-          <p>Latency: {isInferencing ? "Computing..." : "Idle"}</p>
-        </div>
-      </aside>
+        {tab === 'burgers' && <BurgersControls burgersModel={burgersModel} />}
+      </Sidebar>
 
       {/* MAIN: Visualization */}
       <main className={styles.main}>
-        {!model && !burgersModel ? (
+        {!activeModel && activeError ? (
+          <LoadErrorCard message={activeError} onRetry={() => void loadAll()} />
+        ) : !activeModel ? (
           <div className={styles.loading}>Loading AI Model into Browser...</div>
         ) : !activePlot || !trace ? (
           <div className={styles.loading}>Running initial inference...</div>
         ) : (
-          <Plot
-            data={[
-              {
-                z: trace.z,
-                x: activePlot.x, // Space (-1 to 1)
-                y: activePlot.y, // Time (0 to 1)
-                type: 'heatmap',
-                colorscale: trace.colorscale,
-                zmin: trace.zmin,
-                zmax: trace.zmax,
-                // zmid is a valid Plotly heatmap prop; cast covers older @types.
-                zmid: trace.zmid,
-                colorbar: { title: { text: trace.colorbarTitle } },
-              } as Data,
-              // Overlay the inverse-problem observations at their (x, t) so it is
-              // visually clear the network inferred alpha from these sparse points.
-              ...(showObs && inverse && tab === 'inverse'
-                ? [{
-                    x: inverse.observations.map((o) => o.x),
-                    y: inverse.observations.map((o) => o.t),
-                    type: 'scatter',
-                    mode: 'markers',
-                    name: 'observations',
-                    marker: {
-                      color: '#ffffff',
-                      size: 7,
-                      line: { color: '#111827', width: 1 },
-                      symbol: 'circle',
-                    },
-                    hovertemplate: 'x=%{x:.2f}, t=%{y:.2f}<extra>obs</extra>',
-                    showlegend: false,
-                  } as Data]
-                : []),
-            ]}
-            layout={{
-              title: { text: trace.title },
-              xaxis: { title: { text: 'Space (x)' } },
-              yaxis: { title: { text: 'Time (t)' } },
-              width: 700,
-              height: 550,
-              margin: { t: 50, b: 50, l: 50, r: 50 },
-              paper_bgcolor: 'transparent',
-              plot_bgcolor: 'transparent'
-            }}
-            config={{ responsive: true, displayModeBar: false }}
+          <HeatmapPanel
+            trace={trace}
+            plot={activePlot}
+            observations={
+              showObs && inverse && tab === 'inverse' ? inverse.observations : undefined
+            }
           />
         )}
       </main>
-
     </div>
   );
-}
-
-// Build the Plotly trace settings for the selected view. PINN and Exact share a
-// common Viridis colour range so they are directly comparable; Error uses a
-// diverging scale centred at zero so over/under-prediction is obvious.
-function buildTrace(
-  view: ViewMode,
-  data: PlotState,
-  exactLabel = 'Analytical Solution',
-  fieldLabel = 'Temp (u)'
-) {
-  if (view === 'error') {
-    const m = data.metrics.linf || 1e-9;
-    return {
-      z: data.error,
-      colorscale: 'RdBu' as const,
-      zmin: -m,
-      zmax: m,
-      zmid: 0,
-      colorbarTitle: 'Δu',
-      title: 'Error (PINN − Exact)',
-    };
-  }
-
-  // Shared range across both physical fields for a fair comparison.
-  const [zmin, zmax] = sharedRange(data.pinn, data.exact);
-  const isPinn = view === 'pinn';
-  return {
-    z: isPinn ? data.pinn : data.exact,
-    colorscale: 'Viridis' as const,
-    zmin,
-    zmax,
-    zmid: undefined as number | undefined,
-    colorbarTitle: fieldLabel,
-    title: isPinn ? 'PINN Prediction' : exactLabel,
-  };
-}
-
-function sharedRange(a: number[][], b: number[][]): [number, number] {
-  let min = Infinity;
-  let max = -Infinity;
-  for (const grid of [a, b]) {
-    for (const row of grid) {
-      for (const v of row) {
-        if (v < min) min = v;
-        if (v > max) max = v;
-      }
-    }
-  }
-  return [min, max];
-}
-
-function formatPct(x: number): string {
-  return `${(x * 100).toFixed(3)}%`;
 }
 
 export default App;
