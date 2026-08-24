@@ -24,6 +24,7 @@ import numpy as np
 import optax
 from jax.experimental.ode import odeint
 
+from pinn.forward import burgers_ansatz, normalised_mlp
 from pinn.json_forward import forward_from_payload
 
 # Raissi viscosity; the near-shock forms around t ~ 0.7 at this value.
@@ -86,15 +87,8 @@ class BurgersPINN(eqx.Module):
         self.input_scale = INPUT_SCALE
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        x_phys, t_phys = x[0], x[1]
-
-        center = jnp.asarray(self.input_center)
-        scale = jnp.asarray(self.input_scale)
-        x_norm = (x - center) / scale
-
-        n = self.mlp(x_norm)[0]
-
-        u = -jnp.sin(jnp.pi * x_phys) + (1.0 - x_phys ** 2) * t_phys * n
+        n = normalised_mlp(self.mlp, self.input_center, self.input_scale, x)
+        u = burgers_ansatz(x[0], x[1], n)
         return jnp.reshape(u, (1,))
 
 

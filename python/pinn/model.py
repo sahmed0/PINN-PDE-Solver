@@ -3,6 +3,8 @@ import jax
 import jax.numpy as jnp
 import jax.random as jr
 
+from pinn.forward import heat_ansatz, normalised_mlp
+
 # Physical input domains used during training:
 #   x     in [-1, 1]
 #   t     in [0,  1]
@@ -69,13 +71,6 @@ class ParametricPINN(eqx.Module):
            IC/BC softly through weighted loss terms, where the optimiser trades
            them off against the residual.
         """
-        x_phys, t_phys = x[0], x[1]
-
-        center = jnp.asarray(self.input_center)
-        scale = jnp.asarray(self.input_scale)
-        x_norm = (x - center) / scale
-
-        n = self.mlp(x_norm)[0]
-
-        u = jnp.sin(jnp.pi * x_phys) + (1.0 - x_phys ** 2) * t_phys * n
+        n = normalised_mlp(self.mlp, self.input_center, self.input_scale, x)
+        u = heat_ansatz(x[0], x[1], n)
         return jnp.reshape(u, (1,))

@@ -41,6 +41,7 @@ import optax
 
 from pinn.analytical import u_exact
 from pinn.crlb import crlb_std, design_sweep
+from pinn.forward import heat_ansatz, normalised_mlp
 
 # Inputs here are only [x, t] (alpha is no longer an input but an unknown), so we
 # normalise both to ~[-1, 1] before the MLP exactly as the forward model does.
@@ -94,17 +95,11 @@ class InversePINN(eqx.Module):
         self.input_scale = INPUT_SCALE
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
-        x_phys, t_phys = x[0], x[1]
-
-        center = jnp.asarray(self.input_center)
-        scale = jnp.asarray(self.input_scale)
-        x_norm = (x - center) / scale
-
-        n = self.mlp(x_norm)[0]
-
-        # Hard-constraint ansatz: exact IC (t=0 -> sin(pi x)) and zero Dirichlet
-        # BCs (x=+/-1 -> (1 - x^2) = 0), so only the interior dynamics are learnt.
-        u = jnp.sin(jnp.pi * x_phys) + (1.0 - x_phys ** 2) * t_phys * n
+        n = normalised_mlp(self.mlp, self.input_center, self.input_scale, x)
+        # Same hard-constraint heat ansatz as the forward model: exact IC
+        # (t=0 -> sin(pi x)) and zero Dirichlet BCs (x=+/-1 -> (1 - x^2) = 0),
+        # so only the interior dynamics are learnt.
+        u = heat_ansatz(x[0], x[1], n)
         return jnp.reshape(u, (1,))
 
 

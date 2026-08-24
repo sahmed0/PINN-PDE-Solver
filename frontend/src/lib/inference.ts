@@ -38,26 +38,24 @@ export async function loadModel(url = '/pinn_model.json'): Promise<PINNModel> {
   return model;
 }
 
-// Forward pass for a single input vector [x, t, alpha] -> u.
+// Shared MLP core for both PDE models: normalise the raw inputs to ~[-1, 1] and
+// run the tanh-MLP (tanh after every layer except the linear output), returning
+// the scalar network output N. The heat and Burgers forward passes differ only in
+// the ansatz they wrap around this, so the core lives here once.
 //
-// This must mirror the Python model (see model.ParametricPINN.__call__):
-//   1. Normalise raw inputs to ~[-1, 1] before the MLP.
-//   2. Run the tanh-MLP (tanh after every layer except the linear output).
-//   3. Reconstruct u via the hard-constraint ansatz so the IC/BCs are exact:
-//        u = sin(pi x) + (1 - x^2) * t * N
-export function forwardOne(model: PINNModel, input: number[]): number {
-  const x = input[0];
-  const t = input[1];
+// Mirrors the Python pinn.forward.normalised_mlp; the parity tests pin both to the
+// float64 JSON reference at 1e-9.
+function forwardMLP(
+  layers: PINNLayer[],
+  center: number[],
+  scale: number[],
+  input: number[]
+): number {
+  let activations = input.map((v, i) => (v - center[i]) / scale[i]);
 
-  // 1. Input normalisation.
-  let activations = input.map((v, i) => (v - model.input_center[i]) / model.input_scale[i]);
-
-  // 2. MLP.
-  const layers = model.layers;
   for (let l = 0; l < layers.length; l++) {
     const { weight, bias } = layers[l];
     const out = new Array<number>(weight.length);
-
     for (let i = 0; i < weight.length; i++) {
       const row = weight[i];
       let sum = bias[i];
@@ -69,9 +67,19 @@ export function forwardOne(model: PINNModel, input: number[]): number {
     }
     activations = out;
   }
-  const n = activations[0];
+  return activations[0];
+}
 
-  // 3. Hard-constraint ansatz.
+// Forward pass for a single input vector [x, t, alpha] -> u.
+//
+// This must mirror the Python model (see model.ParametricPINN.__call__):
+//   1. Normalise raw inputs to ~[-1, 1] and run the tanh-MLP (forwardMLP).
+//   2. Reconstruct u via the hard-constraint ansatz so the IC/BCs are exact:
+//        u = sin(pi x) + (1 - x^2) * t * N
+export function forwardOne(model: PINNModel, input: number[]): number {
+  const x = input[0];
+  const t = input[1];
+  const n = forwardMLP(model.layers, model.input_center, model.input_scale, input);
   return Math.sin(Math.PI * x) + (1 - x * x) * t * n;
 }
 
@@ -269,25 +277,7 @@ export async function loadBurgersModel(url = '/burgers_model.json'): Promise<Bur
 export function forwardBurgers(model: BurgersModel, input: number[]): number {
   const x = input[0];
   const t = input[1];
-
-  let activations = input.map((v, i) => (v - model.input_center[i]) / model.input_scale[i]);
-
-  const layers = model.layers;
-  for (let l = 0; l < layers.length; l++) {
-    const { weight, bias } = layers[l];
-    const out = new Array<number>(weight.length);
-    for (let i = 0; i < weight.length; i++) {
-      const row = weight[i];
-      let sum = bias[i];
-      for (let j = 0; j < row.length; j++) {
-        sum += row[j] * activations[j];
-      }
-      out[i] = l < layers.length - 1 ? Math.tanh(sum) : sum;
-    }
-    activations = out;
-  }
-  const n = activations[0];
-
+  const n = forwardMLP(model.layers, model.input_center, model.input_scale, input);
   return -Math.sin(Math.PI * x) + (1 - x * x) * t * n;
 }
 
