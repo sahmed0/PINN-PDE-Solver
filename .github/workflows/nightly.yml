@@ -1,0 +1,37 @@
+name: Nightly
+
+# Nightly proof that the rejection path is still alive: retrain the deliberately-weak
+# config on real (short) training and assert the evaluation gate REJECTS it. If the gate
+# ever starts passing the weak model, the gate is broken and this build must fail.
+
+on:
+  schedule:
+    - cron: "0 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  gate-rejects-weak-model:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: python
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          python-version: "3.12"
+      - run: uv sync --group dev --group mlops
+      - name: Train the deliberately-weak config
+        run: >-
+          uv run python mlops/train_entry.py
+          --epochs 300 --num-collocation 150 --config-name weak
+          --output-dir outputs/ci-weak --seed 42
+      - name: Assert the gate rejects it
+        run: |
+          if uv run python mlops/gate.py --model-dir outputs/ci-weak --output outputs/ci-weak/gate_result.json; then
+            echo "::error::Gate PASSED the weak model — the rejection path is broken"; exit 1
+          else
+            echo "Gate correctly rejected the weak model"
+          fi
+      - name: Accuracy-regression test (slow)
+        run: uv run pytest -m slow
