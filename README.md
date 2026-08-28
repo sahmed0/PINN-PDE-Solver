@@ -214,6 +214,12 @@ scoring script ([python/mlops/score.py](python/mlops/score.py)) accepts both a p
 
 ***Then torn down.*** Cost discipline is part of the deliverable – the happy path leaves nothing billing.
 
+The scoring path is exercised offline before any cloud provision by a Docker smoke test
+([python/scripts/docker_smoke.ps1](python/scripts/docker_smoke.ps1)) that builds the inference
+conda env, rebuilds the model from the committed JSON, and times 50 point requests. Measured
+scoring latency inside that local container (`Standard_DS2_v2`-class base image on a laptop,
+**not** a cloud round-trip): p50 ≈ 6.11 ms, p95 ≈ 6.97 ms.
+
 ---
 
 ## 4. Local-first – the same scripts run anywhere
