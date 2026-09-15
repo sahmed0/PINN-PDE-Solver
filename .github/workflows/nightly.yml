@@ -16,8 +16,8 @@ jobs:
       run:
         working-directory: python
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@v7
+      - uses: astral-sh/setup-uv@bec219d24cd3e171d82865faccec33120bb574f4
         with:
           python-version: "3.12"
       - run: uv sync --group dev --group mlops
@@ -29,7 +29,7 @@ jobs:
       - name: Assert the gate rejects it
         run: |
           if uv run python mlops/gate.py --model-dir outputs/ci-weak --output outputs/ci-weak/gate_result.json; then
-            echo "::error::Gate PASSED the weak model — the rejection path is broken"; exit 1
+            echo "::error::Gate PASSED the weak model - the rejection path is broken"; exit 1
           else
             echo "Gate correctly rejected the weak model"
           fi
