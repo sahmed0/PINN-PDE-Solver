@@ -18,6 +18,6 @@ pnpm dev
 ## Where the models come from
 
 The JSON model files in `public/` (`pinn_model.json`, `inverse_model.json`, `burgers_model.json`)
-are exported by the Python training pipeline — `python/src/main.py` writes them into
+are exported by the Python training pipeline — `python/pinn/main.py` writes them into
 `frontend/public/`. Inference runs fully in-browser via a pure-TypeScript forward pass
 (`src/lib/inference.ts`); there is no runtime ML framework, ONNX, or server involved.

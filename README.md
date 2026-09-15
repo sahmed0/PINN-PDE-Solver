@@ -219,7 +219,10 @@ cleared, `passed: True`, and `source_run_id` linking back to the producing run.*
 The registered model is served as a managed online REST endpoint, using a **dedicated inference environment**
 (the training image has no HTTP scoring server – reusing it would fail to deploy after a slow provision). The
 scoring script ([python/mlops/score.py](python/mlops/score.py)) accepts both a point list
-`{"inputs": [[x,t,α], ...]}` and a grid request `{"grid": {"alpha", "nx", "nt"}}`.
+`{"inputs": [[x,t,α], ...]}` and a grid request `{"grid": {"alpha", "nx", "nt"}}`. It enforces a
+serving input policy: `α` is rejected outside the band `[0.005, 0.15]`, a grid is capped at
+`nx*nt ≤ 250_000` points, any `α` outside the trained `[0.01, 0.1]` range is flagged `"ood": true`
+in the response, and a `{"health": ...}` request returns a status echo.
 
 <p align="center">
   <img src="docs/screenshots/azure-live-endpoint-overview.png" alt="Deployed endpoint details page" width="800">
@@ -287,10 +290,13 @@ uv run --group mlops python mlops/gate.py --model-dir outputs/<weak-run-dir>   #
 
 ```
 PDE-solver/
+├─ .github/           # CI (pytest + ruff + frontend build) and nightly gate/accuracy workflows
 ├─ python/
 │  ├─ pinn/           # PINN core (installable package): model, physics (residual/loss), training, analytical solution
 │  ├─ mlops/          # MLOps logic: train_entry, gate, test_set, serialization, score, logging_utils
-│  └─ pytests/        # 37 tests – core + MLOps, all offline/fast (Azure SDK mocked)
+│  ├─ scripts/        # parity-vector generation, Burgers refinement, Docker smoke test
+│  ├─ figures/        # generated study plots (e.g. convergence.png)
+│  └─ pytests/        # 47 tests – core + MLOps, all offline (Azure SDK mocked); 46 fast + 1 slow accuracy regression
 ├─ mlops/             # Azure ML assets: environment + job + endpoint + deployment YAML, runbook
 ├─ frontend/          # React + TypeScript web inference
 └─ docs/              # screenshots and endpoint consumption examples
@@ -330,7 +336,7 @@ The interesting parts of a project like this are the places where the obvious ch
 ```powershell
 cd python
 uv sync --group mlops
-uv run --group mlops pytest                 # 37 passing
+uv run --group mlops pytest -m "not slow"   # 46 fast tests passing (the slow accuracy test runs nightly)
 uv run --group mlops python mlops/train_entry.py --epochs 20000   # train + log to ./mlruns
 mlflow ui                                   # inspect runs/metrics/artifacts
 ```
@@ -348,8 +354,22 @@ endpoint serving) lives in [mlops/README.md](mlops/README.md).
 
 ## 8. Status & honesty notes
 
-- The pipeline is **terminal-driven by design** – submission is via the Azure ML CLI/SDK, not GitHub Actions.
-  CI was explicitly out of scope; the gate is the quality control, run by hand or scriptable into CI later.
+- The Azure pipeline is **terminal-driven by design** – job submission is via the Azure ML CLI/SDK, not
+  GitHub Actions. What GitHub Actions *does* cover: a push/PR **CI** workflow runs the offline test suite
+  (Azure mocked) plus ruff lint plus the frontend lint/build, and a scheduled **nightly** workflow retrains
+  the deliberately-weak config and fails the build if the gate ever accepts it – so the rejection path stays
+  provably alive, not just asserted once.
 - The online endpoint shown above was **deleted after the screenshots** – it is not running and not billing.
 - The "weak config" is a real, documented run, not a mock: it trains, it's evaluated by the identical gate,
   and it's rejected. The failing path is a first-class part of the demonstration, not an afterthought.
+- **The Python → JSON → browser/endpoint numerical seam is pinned by golden-vector parity tests.** A float64
+  reference forward pass over the exported model JSON is checked against both the in-browser TypeScript forward
+  pass (to 1e-9) and the JAX scoring endpoint (to 1e-4), so a refactor on either side that changes the maths
+  fails the build rather than silently drifting.
+- **The scoring endpoint is input-bounded**, not a raw model call: it rejects `α` outside `[0.005, 0.15]`, caps
+  grid requests at `nx*nt ≤ 250_000`, flags out-of-training-range `α` in the response, and answers a health
+  echo (see §3d).
+- **Azure has not been re-provisioned since the code was packaged as an installable `pinn` package.** Rather
+  than pay for another cloud round-trip, the scoring path is re-verified offline by the Docker smoke test
+  (builds the inference env, rebuilds the model from the committed JSON, exercises `score.init`/`run` and the
+  health route, and times requests) – the same local-first discipline the pipeline is built on.

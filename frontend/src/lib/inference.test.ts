@@ -1,5 +1,5 @@
 // Golden-vector parity tests: the pure-TS forward pass must reproduce the float64
-// reference vectors embedded by the Python exporter (see python/src/json_forward.py).
+// reference vectors embedded by the Python exporter (see python/pinn/json_forward.py).
 // Heat vectors live inside public/pinn_model.json; Burgers vectors live in a fixture
 // (the shipped burgers_model.json has no recoverable checkpoint, so its vectors are
 // derived from the file itself). Tolerance 1e-9 = both sides are float64.
