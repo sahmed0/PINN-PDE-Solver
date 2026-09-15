@@ -79,6 +79,31 @@ learning-rate restarts; the run settles below 10⁻⁶ loss / 2.5 × 10⁻⁴ re
 **inverse problem** – recovering an unknown diffusivity `α` from sparse, noisy observations, a
 parameter-estimation task a classical forward solver cannot do directly.
 
+### How accuracy scales
+
+*How do you know the collocation budget is enough?* A convergence study
+([python/pinn/convergence_study.py](python/pinn/convergence_study.py)) trains the network from a
+fixed seed across a range of collocation-point counts – each through the same production
+`train()` loop (cosine-annealed Adam) – and measures the mean relative L2 against the analytical
+solution.
+
+<p align="center">
+  <img src="python/figures/convergence.png" alt="Log-log plot of mean relative L2 error vs number of collocation points" width="640">
+</p>
+
+*Reduced-budget study (2000 epochs per point; the headline model runs 20 000).* Error falls from
+**1.368e-02** at 100 points to **9.285e-03** at 1000 points – roughly halving over that range – then
+**plateaus**: 2000 and 4000 points only reach **9.150e-03** and **8.982e-03**, each under a 2% further
+drop versus 8–16% per doubling below 1000. Past that point the bottleneck is optimisation/network
+capacity, not collocation density. The **slope**, not the absolute level, is the finding: at the full
+20 000-epoch budget the whole curve sits lower.
+
+For **Burgers'**, the "exact" field is itself a numerical (method-of-lines) reference, so it carries
+its own discretisation error. A grid-refinement check (nx=512 vs nx=2048, via
+[python/scripts/burgers_refinement.py](python/scripts/burgers_refinement.py)) puts that at
+rel-L2 **4.320e-03** – meaning a meaningful share of the PINN's quoted Burgers rel-L2 is really the
+reference's own error near the shock, not the model's.
+
 ---
 
 ## 2. Interactive frontend
