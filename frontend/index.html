@@ -1,17 +1,32 @@
 <!doctype html>
 <html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="robots" content="noindex" />
+    <title>PINN Solver · Physics-informed neural networks in the browser</title>
+    <meta name="description" content="Physics-informed neural networks solving the heat and Burgers’ equations and recovering a diffusivity from noisy data, running entirely in your browser and validated against closed-form and numerical references." />
+    <meta name="theme-color" content="#0f766e" />
+    <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+    <link rel="canonical" href="https://pinn-pde-solver.vercel.app/" />
 
-<head>
-  <meta charset="UTF-8" />
-  <meta name="robots" content="noindex">
-  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>frontend</title>
-</head>
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="PINN Solver" />
+    <meta property="og:title" content="PINN Solver · Physics-informed neural networks in the browser" />
+    <meta property="og:description" content="Heat, inverse and Burgers’ PDE problems solved by neural networks that run client-side, with live error metrics and Cramér–Rao uncertainty bounds." />
+    <meta property="og:url" content="https://pinn-pde-solver.vercel.app/" />
+    <meta property="og:image" content="https://pinn-pde-solver.vercel.app/og-image.png" />
+    <meta property="og:image:width" content="1200" />
+    <meta property="og:image:height" content="630" />
+    <meta property="og:image:alt" content="PINN Solver showing the heat-equation field, error metrics and model inspector" />
 
-<body>
-  <div id="root"></div>
-  <script type="module" src="/src/main.tsx"></script>
-</body>
-
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="PINN Solver · Physics-informed neural networks in the browser" />
+    <meta name="twitter:description" content="Heat, inverse and Burgers’ PDE problems solved by neural networks that run client-side." />
+    <meta name="twitter:image" content="https://pinn-pde-solver.vercel.app/og-image.png" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+  </body>
 </html>
