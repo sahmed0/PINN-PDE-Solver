@@ -1,0 +1,4 @@
+.tex :global(.katex) { font-size: 1.05em; }
+.block { display: block; overflow-x: auto; overflow-y: hidden; }
+.block :global(.katex-display) { margin: 0; text-align: left; }
+.block :global(.katex-display > .katex) { text-align: left; }
