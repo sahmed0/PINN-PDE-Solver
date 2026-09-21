@@ -1,0 +1,32 @@
+.header {
+  display: grid;
+  gap: var(--space-2);
+  padding-top: var(--space-1);
+}
+
+.eyebrow {
+  font-size: var(--text-2xs);
+  font-weight: var(--weight-semibold);
+  letter-spacing: var(--tracking-overline);
+  text-transform: uppercase;
+  color: var(--color-accent);
+}
+
+.title {
+  font-size: var(--text-xl);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-tight);
+  letter-spacing: var(--tracking-tight);
+}
+
+.equation {
+  font-size: var(--text-md);
+  color: var(--color-text);
+  padding-block: var(--space-1);
+}
+
+.lede {
+  max-width: 72ch;
+  color: var(--color-text-secondary);
+  line-height: var(--leading-relaxed);
+}

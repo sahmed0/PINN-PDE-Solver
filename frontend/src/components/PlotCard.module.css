@@ -1,0 +1,98 @@
+.card {
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-xs);
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.toolbar {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  padding: var(--space-4) var(--space-5) var(--space-2);
+}
+
+.heading {
+  display: grid;
+  gap: var(--space-0-5);
+  min-width: 0;
+}
+
+.title {
+  font-size: var(--text-md);
+  font-weight: var(--weight-semibold);
+  line-height: var(--leading-snug);
+  color: var(--color-text);
+}
+
+.subtitle {
+  font-size: var(--text-sm);
+  line-height: var(--leading-snug);
+  color: var(--color-text-tertiary);
+}
+
+.plotArea {
+  position: relative;
+  min-width: 0;
+  height: clamp(420px, calc(100dvh - 400px), 720px);
+  padding: 0 var(--space-3) 0 var(--space-2);
+}
+
+.footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-3);
+  padding: var(--space-2) var(--space-5);
+  border-top: 1px solid var(--color-border);
+  background: var(--color-surface-muted);
+  font-size: var(--text-xs);
+  color: var(--color-text-tertiary);
+}
+
+.dot {
+  display: inline-block;
+  width: 6px;
+  height: 6px;
+  margin-right: var(--space-2);
+  border-radius: var(--radius-full);
+  background: var(--color-accent);
+  vertical-align: middle;
+}
+
+.num {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--color-text-secondary);
+}
+
+@media (max-width: 899px) {
+  .plotArea {
+    height: auto;
+    aspect-ratio: 4 / 3;
+    min-height: 300px;
+  }
+}
+
+@media (max-width: 559px) {
+  .plotArea {
+    aspect-ratio: 1 / 1;
+    padding: 0;
+  }
+  .toolbar {
+    padding: var(--space-3) var(--space-4) var(--space-2);
+  }
+  .toggle {
+    width: 100%;
+  }
+  .footer {
+    padding: var(--space-2) var(--space-4);
+  }
+}
