@@ -1,13 +1,12 @@
-// Pure plotting helpers shared by App and its panel components.
-//
-// These are framework-free transforms over the precomputed PINN / reference /
-// error fields — no React, no fetching. The heatmap trace configuration lives
-// here so the view logic can be unit-reasoned independently of the components.
-
 import type { ErrorMetrics } from './inference.ts';
 
 export type ViewMode = 'pinn' | 'exact' | 'error';
 export type TabMode = 'forward' | 'inverse' | 'burgers';
+
+export interface InferenceTiming {
+  points: number;
+  ms: number;
+}
 
 export interface PlotState {
   pinn: number[][];
@@ -16,74 +15,66 @@ export interface PlotState {
   metrics: ErrorMetrics;
   x: number[];
   y: number[];
+  timing: InferenceTiming;
 }
 
-export const VIEW_LABELS: Record<ViewMode, string> = {
-  pinn: 'PINN',
-  exact: 'Exact',
-  error: 'Error',
-};
+export type Colorscale = Array<[number, string]>;
+
+// ColorBrewer RdBu (11-class), reversed: negative = blue, positive = red.
+export const FIELD_COLORSCALE: Colorscale = [
+  [0, '#053061'], [0.1, '#2166ac'], [0.2, '#4393c3'], [0.3, '#92c5de'], [0.4, '#d1e5f0'],
+  [0.5, '#f7f7f7'],
+  [0.6, '#fddbc7'], [0.7, '#f4a582'], [0.8, '#d6604d'], [0.9, '#b2182b'], [1, '#67001f'],
+];
+
+// ColorBrewer PuOr (11-class), reversed: negative = purple, positive = orange.
+export const ERROR_COLORSCALE: Colorscale = [
+  [0, '#2d004b'], [0.1, '#542788'], [0.2, '#8073ac'], [0.3, '#b2abd2'], [0.4, '#d8daeb'],
+  [0.5, '#f7f7f7'],
+  [0.6, '#fee0b6'], [0.7, '#fdb863'], [0.8, '#e08214'], [0.9, '#b35806'], [1, '#7f3b08'],
+];
+
+// Mirrors tokens.css; Plotly styles are set in JS and cannot read CSS variables.
+export const PLOT_THEME = {
+  fontSans: "'Inter Variable', Inter, system-ui, sans-serif",
+  fontMono: "'JetBrains Mono Variable', 'JetBrains Mono', ui-monospace, monospace",
+  text: '#475569',
+  title: '#0f172a',
+  axisLine: '#cbd5e1',
+  hoverBg: '#0f172a',
+  hoverText: '#f8fafc',
+  markerFill: '#ffffff',
+  markerLine: '#0f172a',
+} as const;
 
 export interface HeatmapTrace {
   z: number[][];
-  colorscale: 'RdBu' | 'Viridis';
+  colorscale: Colorscale;
   zmin: number;
   zmax: number;
-  zmid: number | undefined;
   colorbarTitle: string;
-  title: string;
+  isError: boolean;
 }
 
-// Build the Plotly trace settings for the selected view. PINN and Exact share a
-// common Viridis colour range so they are directly comparable; Error uses a
-// diverging scale centred at zero so over/under-prediction is obvious.
-export function buildTrace(
-  view: ViewMode,
-  data: PlotState,
-  exactLabel = 'Analytical Solution',
-  fieldLabel = 'Temp (u)'
-): HeatmapTrace {
+export function maxAbs(grid: number[][]): number {
+  let m = 0;
+  for (const row of grid) for (const v of row) if (Math.abs(v) > m) m = Math.abs(v);
+  return m;
+}
+
+export function buildTrace(view: ViewMode, data: PlotState): HeatmapTrace {
   if (view === 'error') {
     const m = data.metrics.linf || 1e-9;
-    return {
-      z: data.error,
-      colorscale: 'RdBu',
-      zmin: -m,
-      zmax: m,
-      zmid: 0,
-      colorbarTitle: 'Δu',
-      title: 'Error (PINN − Exact)',
-    };
+    return { z: data.error, colorscale: ERROR_COLORSCALE, zmin: -m, zmax: m, colorbarTitle: 'Δu', isError: true };
   }
-
-  // Shared range across both physical fields for a fair comparison.
-  const [zmin, zmax] = sharedRange(data.pinn, data.exact);
-  const isPinn = view === 'pinn';
+  // One symmetric range for PINN and reference so the two views are directly comparable.
+  const m = Math.max(maxAbs(data.pinn), maxAbs(data.exact)) || 1;
   return {
-    z: isPinn ? data.pinn : data.exact,
-    colorscale: 'Viridis',
-    zmin,
-    zmax,
-    zmid: undefined,
-    colorbarTitle: fieldLabel,
-    title: isPinn ? 'PINN Prediction' : exactLabel,
+    z: view === 'pinn' ? data.pinn : data.exact,
+    colorscale: FIELD_COLORSCALE,
+    zmin: -m,
+    zmax: m,
+    colorbarTitle: 'u',
+    isError: false,
   };
-}
-
-export function sharedRange(a: number[][], b: number[][]): [number, number] {
-  let min = Infinity;
-  let max = -Infinity;
-  for (const grid of [a, b]) {
-    for (const row of grid) {
-      for (const v of row) {
-        if (v < min) min = v;
-        if (v > max) max = v;
-      }
-    }
-  }
-  return [min, max];
-}
-
-export function formatPct(x: number): string {
-  return `${(x * 100).toFixed(3)}%`;
 }

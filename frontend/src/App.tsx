@@ -1,5 +1,4 @@
-// src/App.tsx
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type ReactNode } from 'react';
 import {
   loadModel,
   loadInverseResult,
@@ -21,12 +20,31 @@ import {
   type ViewMode,
   type TabMode,
 } from './lib/plotting.ts';
+import {
+  HEADERS,
+  LOAD_LABELS,
+  PLOT_TITLES,
+  TAB_LABELS,
+  VIEW_OPTIONS,
+  BURGERS_LEDE,
+  BURGERS_CONTEXT_NOTE,
+  FORWARD_LEDE,
+  inverseLede,
+  plotSubtitle,
+} from './lib/content.ts';
+import { formatFixed, formatRatio } from './lib/format.ts';
+import { Sci } from './components/Sci.tsx';
+import { AppBar } from './components/AppBar.tsx';
+import { PageHeader } from './components/PageHeader.tsx';
+import { StatRow, StatTile, ContextNote } from './components/StatRow.tsx';
+import { PlotCard } from './components/PlotCard.tsx';
 import { HeatmapPanel } from './components/HeatmapPanel.tsx';
-import { LoadErrorCard } from './components/LoadErrorCard.tsx';
-import { Sidebar } from './components/Sidebar.tsx';
-import { ForwardControls } from './components/ForwardControls.tsx';
-import { InverseControls } from './components/InverseControls.tsx';
-import { BurgersControls } from './components/BurgersControls.tsx';
+import { LoadingPanel, LoadErrorPanel } from './components/StatusPanel.tsx';
+import { Inspector } from './components/Inspector.tsx';
+import { ForwardInspector } from './components/ForwardInspector.tsx';
+import { InverseInspector } from './components/InverseInspector.tsx';
+import { BurgersInspector } from './components/BurgersInspector.tsx';
+import { useHashTab } from './lib/useHashTab.ts';
 import styles from './App.module.css';
 
 // Resolution of our grid
@@ -41,11 +59,69 @@ interface LoadErrors {
   burgers?: string;
 }
 
-const LOAD_LABELS: Record<keyof LoadErrors, string> = {
-  forward: 'Failed to load the forward PINN.',
-  inverse: 'Failed to load the inverse result.',
-  burgers: "Failed to load the Burgers' model.",
-};
+interface TabStatsProps {
+  tab: TabMode;
+  alpha: number;
+  plotData: PlotState | null;
+  inverse: InverseResult | null;
+  burgersModel: BurgersModel | null;
+  burgersPlotData: PlotState | null;
+}
+
+function TabStats({ tab, alpha, plotData, inverse, burgersModel, burgersPlotData }: TabStatsProps) {
+  if (tab === 'forward') {
+    const nx = plotData?.x.length ?? NX;
+    const nt = plotData?.y.length ?? NT;
+    return (
+      <StatRow>
+        <StatTile label="Relative L² error" value={<Sci value={plotData?.metrics.relL2} />} sub="vs. closed-form solution" />
+        <StatTile label="Max abs error (L∞)" value={<Sci value={plotData?.metrics.linf} />} sub={`over the ${nx} × ${nt} grid`} />
+        <StatTile label="Diffusivity α" value={formatFixed(alpha, 3)} sub="trained range 0.010–0.100" />
+      </StatRow>
+    );
+  }
+
+  if (tab === 'inverse') {
+    const ratio =
+      inverse?.alpha_std != null && inverse.crlb_std != null ? inverse.alpha_std / inverse.crlb_std : undefined;
+    return (
+      <StatRow>
+        <StatTile label="Recovered α̂" value={formatFixed(inverse?.alpha_est, 5)} sub={`true α = ${formatFixed(inverse?.alpha_true, 5)}`} />
+        <StatTile
+          label="Estimator spread (1σ)"
+          value={<Sci value={inverse?.alpha_std} />}
+          sub={inverse?.n_seeds != null ? `over ${inverse.n_seeds} noise realisations` : 'over repeated noise realisations'}
+        />
+        <StatTile
+          label="Spread vs. Cramér–Rao floor"
+          value={formatRatio(ratio)}
+          sub={<>floor σ = <Sci value={inverse?.crlb_std} /></>}
+        />
+      </StatRow>
+    );
+  }
+
+  const refUncertainty = burgersModel?.reference_uncertainty;
+  const showRefTile = burgersModel == null || refUncertainty != null;
+  return (
+    <>
+      <StatRow>
+        <StatTile label="Relative L² error" value={<Sci value={burgersPlotData?.metrics.relL2} />} sub="vs. method-of-lines reference" />
+        <StatTile label="Max abs error (L∞)" value={<Sci value={burgersPlotData?.metrics.linf} />} sub="on the steep front, x ≈ 0" />
+        {showRefTile && (
+          <StatTile
+            label="Reference grid error"
+            value={<Sci value={refUncertainty?.rel_l2_512_vs_2048} />}
+            sub="rel. L², 512 vs 2048 points"
+          />
+        )}
+      </StatRow>
+      <ContextNote>
+        {showRefTile ? BURGERS_CONTEXT_NOTE : `${BURGERS_CONTEXT_NOTE.split('. ')[0]}.`}
+      </ContextNote>
+    </>
+  );
+}
 
 function App() {
   // --- State ---
@@ -56,11 +132,14 @@ function App() {
   // computed once when the model loads rather than reactively on alpha changes.
   const [burgersPlotData, setBurgersPlotData] = useState<PlotState | null>(null);
   const [loadErrors, setLoadErrors] = useState<LoadErrors>({});
-  const [tab, setTab] = useState<TabMode>('forward');
+  const [tab, setTab] = useHashTab();
   const [showObs, setShowObs] = useState<boolean>(true);
   const [alpha, setAlpha] = useState<number>(0.05); // Default thermal diffusivity
-  const [isInferencing, setIsInferencing] = useState<boolean>(false);
   const [view, setView] = useState<ViewMode>('pinn');
+
+  useEffect(() => {
+    document.title = `${TAB_LABELS[tab]} · PINN Solver`;
+  }, [tab]);
 
   // On the inverse tab the heatmap is rendered at the *recovered* alpha (so the
   // overlaid observations sit on the field they were inferred from); on the
@@ -77,7 +156,7 @@ function App() {
         .then(() => setLoadErrors((e) => ({ ...e, [key]: undefined })))
         .catch((err: unknown) => {
           const detail = err instanceof Error ? err.message : String(err);
-          setLoadErrors((e) => ({ ...e, [key]: `${LOAD_LABELS[key]} ${detail}` }));
+          setLoadErrors((e) => ({ ...e, [key]: detail }));
         });
 
     await Promise.all([
@@ -90,10 +169,20 @@ function App() {
         // closed form. PINN/error fields are derived from it on the same grid.
         const xVals = m.reference.x;
         const tVals = m.reference.t;
+        const t0 = performance.now();
         const pinn = runBurgersInference(m, xVals, tVals);
+        const ms = performance.now() - t0;
         const exact = m.reference.u;
         const metrics = computeErrorMetrics(pinn, exact);
-        setBurgersPlotData({ pinn, exact, error: errorGrid(pinn, exact), metrics, x: xVals, y: tVals });
+        setBurgersPlotData({
+          pinn,
+          exact,
+          error: errorGrid(pinn, exact),
+          metrics,
+          x: xVals,
+          y: tVals,
+          timing: { points: xVals.length * tVals.length, ms },
+        });
       }),
     ]);
   }, []);
@@ -107,13 +196,14 @@ function App() {
   const updatePrediction = useCallback(() => {
     if (!model) return;
 
-    setIsInferencing(true);
     try {
       // Step A: Generate the input grid.
       const { inputs, numPoints, xVals, tVals } = generateGrid(NX, NT, displayAlpha);
 
       // Step B: Run the PINN forward pass and reshape to [nt][nx].
+      const t0 = performance.now();
       const flatOutput = runInference(model, inputs, numPoints);
+      const ms = performance.now() - t0;
       const pinn = reshapeForPlotly(flatOutput, NX, NT);
 
       // Step C: Evaluate the closed-form solution on the same grid, and the
@@ -122,74 +212,94 @@ function App() {
       const error = errorGrid(pinn, exact);
       const metrics = computeErrorMetrics(pinn, exact);
 
-      setPlotData({ pinn, exact, error, metrics, x: xVals, y: tVals });
+      setPlotData({ pinn, exact, error, metrics, x: xVals, y: tVals, timing: { points: numPoints, ms } });
     } catch (err) {
-      console.error("Inference failed:", err);
-    } finally {
-      setIsInferencing(false);
+      console.error('Inference failed:', err);
     }
   }, [model, displayAlpha]);
 
-  // Trigger prediction when the model loads or alpha changes
+  // Trigger prediction when the model loads or alpha changes. The forward pass
+  // is measured wall-clock time (performance.now), which is inherently a side
+  // effect, so it belongs in an effect rather than a pure render-time useMemo.
   useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- derived from (model, displayAlpha), not an event; recomputing here is the intended trigger.
     updatePrediction();
   }, [updatePrediction]);
 
   // --- Plot configuration depends on the selected view ---
-  // The Burgers' tab draws from its own precomputed fields; both share the same
-  // buildTrace/sharedRange/RdBu pattern. Its "Exact" is a numerical reference.
   const activePlot = tab === 'burgers' ? burgersPlotData : plotData;
-  const trace = activePlot
-    ? tab === 'burgers'
-      ? buildTrace(view, activePlot, 'Numerical Reference', 'Velocity (u)')
-      : buildTrace(view, activePlot)
-    : null;
+  const trace = activePlot ? buildTrace(view, activePlot) : null;
 
-  // The active tab's own model + error decide the main-area state: each tab is
-  // gated on the artifact it actually needs (inverse on the inverse result, not
-  // the heat MLP), so one failed load only darkens its own tab.
-  const activeModel = tab === 'burgers' ? burgersModel : tab === 'inverse' ? inverse : model;
-  const activeError = loadErrors[tab];
+  // Inverse draws its field with the heat model, so it needs both artefacts.
+  const ready =
+    tab === 'burgers' ? burgersModel != null
+    : tab === 'inverse' ? inverse != null && model != null
+    : model != null;
 
-  // --- Render ---
+  const errorKey: TabMode | undefined =
+    tab === 'burgers' ? (loadErrors.burgers ? 'burgers' : undefined)
+    : tab === 'inverse' ? (loadErrors.inverse ? 'inverse' : loadErrors.forward ? 'forward' : undefined)
+    : loadErrors.forward ? 'forward' : undefined;
+
+  const nx = activePlot?.x.length ?? NX;
+  const nt = activePlot?.y.length ?? NT;
+  const header = HEADERS[tab];
+  const lede =
+    tab === 'forward' ? FORWARD_LEDE
+    : tab === 'inverse' ? inverseLede(inverse?.n_obs, inverse?.noise_sigma, inverse?.n_seeds)
+    : BURGERS_LEDE;
+  const subtitle = plotSubtitle(tab, view, {
+    alpha,
+    alphaEst: inverse?.alpha_est,
+    nObs: inverse?.observations.length ?? 0,
+    showObs: showObs && inverse != null,
+    nx,
+    nt,
+  });
+
+  let plotBody: ReactNode;
+  if (!ready && errorKey) {
+    plotBody = <LoadErrorPanel title={LOAD_LABELS[errorKey]} detail={loadErrors[errorKey] ?? ''} onRetry={() => void loadAll()} />;
+  } else if (!ready) {
+    plotBody = <LoadingPanel label="Loading model weights…" />;
+  } else if (!activePlot || !trace) {
+    plotBody = <LoadingPanel label="Running first forward pass…" />;
+  } else {
+    plotBody = (
+      <HeatmapPanel
+        trace={trace}
+        plot={activePlot}
+        observations={tab === 'inverse' && showObs && inverse ? inverse.observations : undefined}
+      />
+    );
+  }
+
   return (
-    <div className={styles.container}>
-      {/* SIDEBAR: Controls */}
-      <Sidebar
-        tab={tab}
-        setTab={setTab}
-        view={view}
-        setView={setView}
-        model={model}
-        burgersModel={burgersModel}
-        isInferencing={isInferencing}
-      >
-        {tab === 'forward' && (
-          <ForwardControls model={model} alpha={alpha} setAlpha={setAlpha} plotData={plotData} />
-        )}
-        {tab === 'inverse' && (
-          <InverseControls inverse={inverse} showObs={showObs} setShowObs={setShowObs} />
-        )}
-        {tab === 'burgers' && <BurgersControls burgersModel={burgersModel} />}
-      </Sidebar>
-
-      {/* MAIN: Visualization */}
+    <div className={styles.shell}>
+      <AppBar tab={tab} onTabChange={setTab} />
       <main className={styles.main}>
-        {!activeModel && activeError ? (
-          <LoadErrorCard message={activeError} onRetry={() => void loadAll()} />
-        ) : !activeModel ? (
-          <div className={styles.loading}>Loading AI Model into Browser...</div>
-        ) : !activePlot || !trace ? (
-          <div className={styles.loading}>Running initial inference...</div>
-        ) : (
-          <HeatmapPanel
-            trace={trace}
-            plot={activePlot}
-            observations={
-              showObs && inverse && tab === 'inverse' ? inverse.observations : undefined
-            }
-          />
-        )}
+        <div id="workspace" role="tabpanel" aria-labelledby={`tab-${tab}`} className={styles.workspace}>
+          <div className={styles.primary}>
+            <PageHeader eyebrow={header.eyebrow} title={header.title} tex={header.tex} lede={lede} />
+            <TabStats tab={tab} alpha={alpha} plotData={plotData} inverse={inverse}
+              burgersModel={burgersModel} burgersPlotData={burgersPlotData} />
+            <PlotCard
+              title={PLOT_TITLES[tab][view]}
+              subtitle={subtitle}
+              view={view}
+              viewOptions={VIEW_OPTIONS[tab]}
+              onViewChange={setView}
+              timing={activePlot?.timing ?? null}
+            >
+              {plotBody}
+            </PlotCard>
+          </div>
+          <Inspector>
+            {tab === 'forward' && <ForwardInspector model={model} alpha={alpha} setAlpha={setAlpha} plotData={plotData} />}
+            {tab === 'inverse' && <InverseInspector inverse={inverse} model={model} showObs={showObs} setShowObs={setShowObs} />}
+            {tab === 'burgers' && <BurgersInspector burgersModel={burgersModel} plot={burgersPlotData} />}
+          </Inspector>
+        </div>
       </main>
     </div>
   );
