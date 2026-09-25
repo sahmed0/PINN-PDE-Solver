@@ -35,6 +35,7 @@ class ParametricPINN(eqx.Module):
     ansatz bakes the initial and boundary conditions into the output exactly so the
     network only has to learn the interior dynamics (see __call__).
     """
+
     mlp: eqx.nn.MLP
     input_center: tuple = eqx.field(static=True)
     input_scale: tuple = eqx.field(static=True)

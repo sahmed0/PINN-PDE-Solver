@@ -24,7 +24,7 @@ def u_exact(x, t, alpha):
 
     Accepts scalars or broadcastable arrays for x, t and alpha.
     """
-    return jnp.sin(jnp.pi * x) * jnp.exp(-alpha * (jnp.pi ** 2) * t)
+    return jnp.sin(jnp.pi * x) * jnp.exp(-alpha * (jnp.pi**2) * t)
 
 
 def make_grid(nx, nt, alpha):
@@ -93,10 +93,6 @@ def format_report(metrics):
     """Pretty-print the dict returned by `evaluate` as a small table."""
     lines = ["    alpha |  rel L2  |   L-inf", "    ------+----------+---------"]
     for a in metrics["alphas"]:
-        lines.append(
-            f"    {a:5.3f} | {metrics['rel_l2'][a]:.2e} | {metrics['linf'][a]:.2e}"
-        )
-    lines.append(
-        f"     mean | {metrics['mean_rel_l2']:.2e} | {metrics['mean_linf']:.2e}"
-    )
+        lines.append(f"    {a:5.3f} | {metrics['rel_l2'][a]:.2e} | {metrics['linf'][a]:.2e}")
+    lines.append(f"     mean | {metrics['mean_rel_l2']:.2e} | {metrics['mean_linf']:.2e}")
     return "\n".join(lines)

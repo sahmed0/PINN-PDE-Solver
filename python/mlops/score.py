@@ -140,7 +140,9 @@ def _predict_grid(spec):
     if nx < 2 or nt < 2:
         return {"error": "nx and nt must each be >= 2."}
     if nx * nt > config.MAX_GRID_POINTS:
-        return {"error": f"grid nx*nt={nx * nt} exceeds the cap of {config.MAX_GRID_POINTS} points."}
+        return {
+            "error": f"grid nx*nt={nx * nt} exceeds the cap of {config.MAX_GRID_POINTS} points."
+        }
 
     u_pred, _u_ref = analytical.predict_on_grid(_MODEL, nx, nt, alpha)
     x_axis = jnp.linspace(_X_LO, _X_HI, nx)

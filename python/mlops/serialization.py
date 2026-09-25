@@ -54,9 +54,7 @@ def load_model(model_dir, key=None):
 
     if key is None:
         key = jr.PRNGKey(0)
-    skeleton = ParametricPINN(
-        key, width_size=arch["width_size"], depth=arch["depth"]
-    )
+    skeleton = ParametricPINN(key, width_size=arch["width_size"], depth=arch["depth"])
 
     eqx_path = os.path.join(model_dir, config.MODEL_FILENAME)
     return eqx.tree_deserialise_leaves(eqx_path, skeleton)

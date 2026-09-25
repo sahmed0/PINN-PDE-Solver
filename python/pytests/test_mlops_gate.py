@@ -40,10 +40,14 @@ def test_untrained_model_fails_gate(tmp_path):
 
 def test_cli_returns_nonzero_on_fail(tmp_path):
     out_dir = _save_untrained(tmp_path)
-    rc = gate.main([
-        "--model-dir", str(out_dir),
-        "--output", str(tmp_path / "gate_result.json"),
-    ])
+    rc = gate.main(
+        [
+            "--model-dir",
+            str(out_dir),
+            "--output",
+            str(tmp_path / "gate_result.json"),
+        ]
+    )
     assert rc != 0
     assert (tmp_path / "gate_result.json").exists()
 

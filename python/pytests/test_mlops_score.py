@@ -88,8 +88,8 @@ def test_malformed_inputs_return_error(tmp_path, monkeypatch):
 
 def test_grid_mode_rejects_bad_spec(tmp_path, monkeypatch):
     _init_with_tiny_model(tmp_path, monkeypatch)
-    assert "error" in score.run(json.dumps({"grid": {"nx": 10}}))          # no alpha
-    assert "error" in score.run(json.dumps({"grid": {"alpha": -1.0}}))     # outside band
+    assert "error" in score.run(json.dumps({"grid": {"nx": 10}}))  # no alpha
+    assert "error" in score.run(json.dumps({"grid": {"alpha": -1.0}}))  # outside band
     assert "error" in score.run(json.dumps({"grid": {"alpha": 0.05, "nx": 1}}))  # nx < 2
 
 

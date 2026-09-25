@@ -45,10 +45,7 @@ def run_gate(model_dir, threshold, threshold_ood, source_run_id="local"):
     model = serialization.load_model(model_dir)
     metrics = test_set.held_out_metrics(model)
 
-    passed = bool(
-        metrics["mean_rel_l2"] < threshold
-        and metrics["mean_rel_l2_ood"] < threshold_ood
-    )
+    passed = bool(metrics["mean_rel_l2"] < threshold and metrics["mean_rel_l2_ood"] < threshold_ood)
 
     return {
         "passed": passed,
@@ -184,23 +181,41 @@ def main(argv=None):
     p = argparse.ArgumentParser(description="Evaluation gate for the heat-equation PINN.")
     src = p.add_mutually_exclusive_group(required=True)
     src.add_argument("--model-dir", type=str, help="A training output dir.")
-    src.add_argument("--run-id", type=str,
-                     help="Resolve the model artefact from an MLflow run.")
-    p.add_argument("--threshold", type=float, default=config.MEAN_REL_L2_THRESHOLD,
-                   help="In-distribution mean rel-L2 must be below this.")
-    p.add_argument("--threshold-ood", type=float, default=config.MEAN_REL_L2_OOD_THRESHOLD,
-                   help="OOD mean rel-L2 must be below this (looser).")
-    p.add_argument("--output", type=str, default="gate_result.json",
-                   help="Where to write gate_result.json.")
-    p.add_argument("--register", action="store_true",
-                   help="On PASS, register the model in the Azure ML Model "
-                        "Registry (needs az login + config.json). On FAIL, "
-                        "register nothing.")
-    p.add_argument("--model-name", type=str, default=config.REGISTERED_MODEL_NAME,
-                   help="Registered model name (Azure ML Model Registry).")
-    p.add_argument("--config-name", type=str, default="unknown",
-                   help="Label recorded as a registry tag/property "
-                        "(e.g. 'baseline'/'weak').")
+    src.add_argument("--run-id", type=str, help="Resolve the model artefact from an MLflow run.")
+    p.add_argument(
+        "--threshold",
+        type=float,
+        default=config.MEAN_REL_L2_THRESHOLD,
+        help="In-distribution mean rel-L2 must be below this.",
+    )
+    p.add_argument(
+        "--threshold-ood",
+        type=float,
+        default=config.MEAN_REL_L2_OOD_THRESHOLD,
+        help="OOD mean rel-L2 must be below this (looser).",
+    )
+    p.add_argument(
+        "--output", type=str, default="gate_result.json", help="Where to write gate_result.json."
+    )
+    p.add_argument(
+        "--register",
+        action="store_true",
+        help="On PASS, register the model in the Azure ML Model "
+        "Registry (needs az login + config.json). On FAIL, "
+        "register nothing.",
+    )
+    p.add_argument(
+        "--model-name",
+        type=str,
+        default=config.REGISTERED_MODEL_NAME,
+        help="Registered model name (Azure ML Model Registry).",
+    )
+    p.add_argument(
+        "--config-name",
+        type=str,
+        default="unknown",
+        help="Label recorded as a registry tag/property (e.g. 'baseline'/'weak').",
+    )
     args = p.parse_args(argv)
 
     # ExitStack owns the temp dir (only created for --run-id) so it is cleaned up
@@ -225,19 +240,19 @@ def main(argv=None):
         # If invoked inside an active MLflow run, record
         # the gate metrics + outcome on that run. Standalone local runs have none.
         if mlflow.active_run() is not None:
-            mlflow.log_metrics({
-                "gate_mean_rel_l2": result["mean_rel_l2"],
-                "gate_mean_rel_l2_ood": result["mean_rel_l2_ood"],
-            })
+            mlflow.log_metrics(
+                {
+                    "gate_mean_rel_l2": result["mean_rel_l2"],
+                    "gate_mean_rel_l2_ood": result["mean_rel_l2_ood"],
+                }
+            )
             mlflow.set_tag("gate_passed", str(result["passed"]).lower())
 
         # Promote only on PASS. The registry holds only models that
         # cleared the gate — a failing run logs its failure and registers nothing.
         if args.register:
             if result["passed"]:
-                version = register_model(
-                    result, model_dir, args.model_name, args.config_name
-                )
+                version = register_model(result, model_dir, args.model_name, args.config_name)
                 print(f"Registered '{args.model_name}' version {version}")
             else:
                 print("GATE FAILED — not registering (registry holds passing models only).")

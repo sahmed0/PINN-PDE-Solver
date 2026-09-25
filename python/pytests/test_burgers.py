@@ -33,9 +33,7 @@ def test_compute_burgers_loss_finite_with_gradients():
         jr.PRNGKey(3), num_collocation=50, num_bc=20, num_ic=20
     )
 
-    loss_val, grads = eqx.filter_value_and_grad(compute_burgers_loss)(
-        model, collocation_points
-    )
+    loss_val, grads = eqx.filter_value_and_grad(compute_burgers_loss)(model, collocation_points)
 
     assert loss_val.ndim == 0
     assert jnp.isfinite(loss_val)

@@ -1,10 +1,10 @@
 """Guards on the Azure ML endpoint/deployment YAML, parsed with yaml.safe_load:
 
-  - deployment.yml `model` references config.REGISTERED_MODEL_NAME.
-  - `scoring_script` resolves to an existing file under `code` (python/mlops/score.py).
-  - deployment.yml `endpoint_name` equals endpoint.yml `name`.
-  - single instance (cap costs).
-  - endpoint auth_mode is `key`.
+- deployment.yml `model` references config.REGISTERED_MODEL_NAME.
+- `scoring_script` resolves to an existing file under `code` (python/mlops/score.py).
+- deployment.yml `endpoint_name` equals endpoint.yml `name`.
+- single instance (cap costs).
+- endpoint auth_mode is `key`.
 """
 
 import os

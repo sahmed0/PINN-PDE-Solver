@@ -34,10 +34,18 @@ NU = 0.01 / jnp.pi
 # as "test_vectors" (see json_forward and the parity tests). They cover t=0,
 # x=+/-1, the near-shock band t~0.7-0.85, and interior points.
 BURGERS_PARITY_INPUTS = [
-    [-0.4, 0.0], [0.8, 0.0],
-    [1.0, 0.5], [-1.0, 0.9],
-    [0.0, 0.7], [0.1, 0.75], [-0.05, 0.8], [0.15, 0.85],
-    [0.5, 0.3], [-0.65, 0.55], [0.33, 0.95], [-0.9, 0.15],
+    [-0.4, 0.0],
+    [0.8, 0.0],
+    [1.0, 0.5],
+    [-1.0, 0.9],
+    [0.0, 0.7],
+    [0.1, 0.75],
+    [-0.05, 0.8],
+    [0.15, 0.85],
+    [0.5, 0.3],
+    [-0.65, 0.55],
+    [0.33, 0.95],
+    [-0.9, 0.15],
 ]
 
 # nu is fixed here (not a network input), so the inputs are only [x, t]. x is
@@ -70,6 +78,7 @@ class BurgersPINN(eqx.Module):
 
     so only the interior dynamics are learnt through the PDE residual.
     """
+
     mlp: eqx.nn.MLP
     input_center: tuple = eqx.field(static=True)
     input_scale: tuple = eqx.field(static=True)
@@ -98,6 +107,7 @@ def burgers_residual(model, x, t):
     physics.heat_equation_residual but for the 2-input model and with the
     nonlinear advection term u * u_x.
     """
+
     def u_fn(x_val, t_val):
         inputs = jnp.stack([x_val, t_val])
         return model(inputs)[0]
@@ -124,7 +134,7 @@ def compute_burgers_loss(model, collocation_points):
     x_c, t_c = collocation_points[:, 0], collocation_points[:, 1]
     vmap_residual = jax.vmap(burgers_residual, in_axes=(None, 0, 0))
     residuals = vmap_residual(model, x_c, t_c)
-    return jnp.mean(residuals ** 2)
+    return jnp.mean(residuals**2)
 
 
 def generate_burgers_data(key, num_collocation=2000, num_bc=100, num_ic=100):
@@ -184,7 +194,7 @@ def burgers_reference(nu=None, nx=512, nt=100, nx_out=100):
         # boundary correctly see the zero boundary value.
         u = u.at[0].set(0.0).at[-1].set(0.0)
         u_x = (jnp.roll(u, -1) - jnp.roll(u, 1)) / (2.0 * dx)
-        u_xx = (jnp.roll(u, -1) - 2.0 * u + jnp.roll(u, 1)) / dx ** 2
+        u_xx = (jnp.roll(u, -1) - 2.0 * u + jnp.roll(u, 1)) / dx**2
         du = nu * u_xx - u * u_x
         return du.at[0].set(0.0).at[-1].set(0.0)
 
@@ -217,17 +227,14 @@ def reference_uncertainty(nx_coarse=512, nx_fine=2048, nx_out=100, nt=100, nu=No
     return {
         "rel_l2_512_vs_2048": rel_l2,
         "linf_512_vs_2048": linf,
-        "note": ("grid-refinement error bar of the embedded nx=512 "
-                 "method-of-lines reference"),
+        "note": ("grid-refinement error bar of the embedded nx=512 method-of-lines reference"),
     }
 
 
 @eqx.filter_jit
 def train_burgers_step(model, opt_state, optimizer, collocation_points):
     """Executes a single compiled optimisation step."""
-    loss_val, grads = eqx.filter_value_and_grad(compute_burgers_loss)(
-        model, collocation_points
-    )
+    loss_val, grads = eqx.filter_value_and_grad(compute_burgers_loss)(model, collocation_points)
     updates, opt_state = optimizer.update(grads, opt_state, model)
     model = eqx.apply_updates(model, updates)
     return model, opt_state, loss_val
@@ -253,9 +260,7 @@ def train_burgers(key, epochs=20000, lr=1e-3, num_collocation=2000):
     )
 
     for epoch in range(epochs):
-        model, opt_state, loss = train_burgers_step(
-            model, opt_state, optimizer, collocation_points
-        )
+        model, opt_state, loss = train_burgers_step(model, opt_state, optimizer, collocation_points)
 
         if epoch % 200 == 0 or epoch == epochs - 1:
             print(f"Epoch {epoch:04d} | Loss: {loss:.6f}")
@@ -290,8 +295,7 @@ def evaluate_burgers(model, nu=None, nx=100, nt=100):
     }
 
 
-def export_burgers_to_json(model, filepath, nu=None, nx=100, nt=100,
-                           include_refinement=False):
+def export_burgers_to_json(model, filepath, nu=None, nx=100, nt=100, include_refinement=False):
     """
     Export the trained Burgers' MLP plus the embedded reference field.
 
@@ -316,12 +320,13 @@ def export_burgers_to_json(model, filepath, nu=None, nx=100, nt=100,
     for layer in model.mlp.layers:
         weight = np.asarray(layer.weight, dtype=np.float64)
         bias = layer.bias
-        bias = (np.zeros(weight.shape[0]) if bias is None
-                else np.asarray(bias, dtype=np.float64))
-        layers.append({
-            "weight": weight.tolist(),
-            "bias": bias.tolist(),
-        })
+        bias = np.zeros(weight.shape[0]) if bias is None else np.asarray(bias, dtype=np.float64)
+        layers.append(
+            {
+                "weight": weight.tolist(),
+                "bias": bias.tolist(),
+            }
+        )
 
     payload = {
         "format": "tanh-mlp-burgers-v1",

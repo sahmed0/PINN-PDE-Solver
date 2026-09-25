@@ -51,7 +51,7 @@ def sensitivity(x, t, alpha):
     This is the per-point signal sensitivity that drives the Fisher information:
     dg/dalpha = -pi^2 t sin(pi x) exp(-alpha pi^2 t). Accepts scalars or arrays.
     """
-    return -(jnp.pi ** 2) * t * jnp.sin(jnp.pi * x) * jnp.exp(-alpha * (jnp.pi ** 2) * t)
+    return -(jnp.pi**2) * t * jnp.sin(jnp.pi * x) * jnp.exp(-alpha * (jnp.pi**2) * t)
 
 
 def fisher_information(X_obs, alpha, sigma):
@@ -63,7 +63,7 @@ def fisher_information(X_obs, alpha, sigma):
     x = X_obs[:, 0]
     t = X_obs[:, 1]
     dg = sensitivity(x, t, alpha)
-    return jnp.sum(dg ** 2) / sigma ** 2
+    return jnp.sum(dg**2) / sigma**2
 
 
 def crlb_std(X_obs, alpha, sigma):
@@ -121,12 +121,14 @@ def design_sweep(alpha=0.042, sigma=0.01, n_draws=200):
     rows = []
     for n, sig, tmax in _SWEEP_DESIGNS:
         rel = expected_crlb_std(alpha, sig, n, t_max=tmax, n_draws=n_draws) / alpha
-        rows.append({
-            "n_obs": int(n),
-            "sigma": float(sig),
-            "t_max": float(tmax),
-            "rel_pct": float(rel * 100.0),
-        })
+        rows.append(
+            {
+                "n_obs": int(n),
+                "sigma": float(sig),
+                "t_max": float(tmax),
+                "rel_pct": float(rel * 100.0),
+            }
+        )
     return rows
 
 
@@ -135,5 +137,6 @@ if __name__ == "__main__":
     print(f"    {'N':>4s} | {'sigma':>6s} | {'t<=':>4s} | CRLB std (% of true)")
     print(f"    {'-' * 4}-+-{'-' * 6}-+-{'-' * 4}-+--------------------")
     for r in design_sweep():
-        print(f"    {r['n_obs']:>4d} | {r['sigma']:>6.3f} | {r['t_max']:>4.1f} "
-              f"| {r['rel_pct']:6.2f}%")
+        print(
+            f"    {r['n_obs']:>4d} | {r['sigma']:>6.3f} | {r['t_max']:>4.1f} | {r['rel_pct']:6.2f}%"
+        )

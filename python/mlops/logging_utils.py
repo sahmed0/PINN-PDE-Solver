@@ -84,9 +84,7 @@ def plot_solution(model, alpha, out_path):
         (axes[1], u_ref, "exact u"),
         (axes[2], err, "abs error"),
     ):
-        im = ax.imshow(
-            field, origin="lower", aspect="auto", extent=extent, cmap="viridis"
-        )
+        im = ax.imshow(field, origin="lower", aspect="auto", extent=extent, cmap="viridis")
         ax.set_title(title)
         ax.set_xlabel("x")
         ax.set_ylabel("t")

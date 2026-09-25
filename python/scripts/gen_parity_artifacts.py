@@ -97,8 +97,10 @@ def generate_heat():
         new = json.load(f)
     assert new["layers"] == old_layers, "layers changed — expected weights to be identical!"
     assert "test_vectors" in new, "test_vectors missing after generation"
-    print(f"  Self-check OK: layers identical, {len(new['test_vectors']['inputs'])} "
-          f"heat test_vectors embedded.\n")
+    print(
+        f"  Self-check OK: layers identical, {len(new['test_vectors']['inputs'])} "
+        f"heat test_vectors embedded.\n"
+    )
 
 
 def generate_burgers():

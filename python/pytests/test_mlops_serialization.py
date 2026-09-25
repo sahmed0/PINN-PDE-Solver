@@ -23,11 +23,13 @@ def test_save_load_roundtrip(tmp_path):
     loaded = serialization.load_model(str(out_dir))
 
     # Identical predictions on a batch of test inputs.
-    inputs = jnp.array([
-        [0.0, 0.0, 0.05],
-        [0.3, 0.5, 0.02],
-        [-0.7, 0.9, 0.09],
-    ])
+    inputs = jnp.array(
+        [
+            [0.0, 0.0, 0.05],
+            [0.3, 0.5, 0.02],
+            [-0.7, 0.9, 0.09],
+        ]
+    )
     orig = jnp.stack([model(x) for x in inputs])
     again = jnp.stack([loaded(x) for x in inputs])
     assert jnp.allclose(orig, again, atol=1e-6)

@@ -40,7 +40,7 @@ def heat_ansatz(x_phys, t_phys, n):
     At t=0 -> sin(pi x) (initial condition); at x=+/-1 -> (1 - x^2)=0 and sin=0
     (zero Dirichlet BCs). Shared by the forward and inverse heat models.
     """
-    return jnp.sin(jnp.pi * x_phys) + (1.0 - x_phys ** 2) * t_phys * n
+    return jnp.sin(jnp.pi * x_phys) + (1.0 - x_phys**2) * t_phys * n
 
 
 def burgers_ansatz(x_phys, t_phys, n):
@@ -48,4 +48,4 @@ def burgers_ansatz(x_phys, t_phys, n):
 
     Same structure as heat_ansatz but with the -sin initial profile u(x, 0) = -sin(pi x).
     """
-    return -jnp.sin(jnp.pi * x_phys) + (1.0 - x_phys ** 2) * t_phys * n
+    return -jnp.sin(jnp.pi * x_phys) + (1.0 - x_phys**2) * t_phys * n

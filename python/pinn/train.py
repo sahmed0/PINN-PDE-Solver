@@ -16,16 +16,26 @@ from pinn.physics import compute_loss, compute_loss_components
 # cover t=0, x=+/-1, the alpha edges, the gate's OOD alphas, and irregular interior
 # points; keep them stable so old exports stay comparable.
 PARITY_INPUTS = [
-    [-0.7, 0.0, 0.055], [0.3, 0.0, 0.01],
-    [1.0, 0.5, 0.05], [-1.0, 0.25, 0.1],
-    [0.5, 1.0, 0.01], [-0.5, 1.0, 0.1],
-    [0.25, 0.5, 0.007], [0.25, 0.5, 0.12],
-    [0.123, 0.456, 0.033], [-0.987, 0.001, 0.099],
-    [0.001, 0.999, 0.0123], [0.777, 0.333, 0.071],
-    [-0.333, 0.667, 0.047], [0.9, 0.9, 0.089],
-    [-0.6, 0.1, 0.023], [0.05, 0.55, 0.055],
-    [-0.25, 0.75, 0.06], [0.65, 0.2, 0.085],
-    [-0.85, 0.85, 0.015], [0.45, 0.05, 0.095],
+    [-0.7, 0.0, 0.055],
+    [0.3, 0.0, 0.01],
+    [1.0, 0.5, 0.05],
+    [-1.0, 0.25, 0.1],
+    [0.5, 1.0, 0.01],
+    [-0.5, 1.0, 0.1],
+    [0.25, 0.5, 0.007],
+    [0.25, 0.5, 0.12],
+    [0.123, 0.456, 0.033],
+    [-0.987, 0.001, 0.099],
+    [0.001, 0.999, 0.0123],
+    [0.777, 0.333, 0.071],
+    [-0.333, 0.667, 0.047],
+    [0.9, 0.9, 0.089],
+    [-0.6, 0.1, 0.023],
+    [0.05, 0.55, 0.055],
+    [-0.25, 0.75, 0.06],
+    [0.65, 0.2, 0.085],
+    [-0.85, 0.85, 0.015],
+    [0.45, 0.05, 0.095],
 ]
 
 
@@ -61,7 +71,7 @@ def generate_training_data(key, num_collocation=1000, num_bc=100, num_ic=100):
     # so the network would just learn a flat field.)
     u_ic = jnp.sin(jnp.pi * x_ic)
     ic_points = (X_ic, u_ic)
-    
+
     # 3. Boundary Condition Points (x = -1 and x = 1)
     t_bc = jr.uniform(k_bc_t, (num_bc, 1), minval=0.0, maxval=1.0)
     alpha_bc = jr.uniform(k_bc_a, (num_bc, 1), minval=0.01, maxval=0.1)
@@ -69,25 +79,32 @@ def generate_training_data(key, num_collocation=1000, num_bc=100, num_ic=100):
     # Half points at x=-1, half at x=1
     x_bc = jnp.where(jr.bernoulli(k_bc_side, 0.5, (num_bc, 1)), 1.0, -1.0)
     X_bc = jnp.hstack([x_bc, t_bc, alpha_bc])
-    u_bc = jnp.zeros((num_bc, 1)) # Assuming u(boundary, t) = 0
+    u_bc = jnp.zeros((num_bc, 1))  # Assuming u(boundary, t) = 0
     bc_points = (X_bc, u_bc)
-    
+
     return collocation_points, ic_points, bc_points
+
 
 @eqx.filter_jit
 def train_step(model, opt_state, optimizer, collocation_points):
     """Executes a single compiled optimization step."""
-    loss_val, grads = eqx.filter_value_and_grad(compute_loss)(
-        model, collocation_points
-    )
+    loss_val, grads = eqx.filter_value_and_grad(compute_loss)(model, collocation_points)
     # Calculate updates and apply them
     updates, opt_state = optimizer.update(grads, opt_state, model)
     model = eqx.apply_updates(model, updates)
     return model, opt_state, loss_val
 
-def train(model, key, epochs=20000, lr=1e-3, validate=True,
-          val_alphas=(0.01, 0.05, 0.1), num_collocation=4000,
-          log_callback=None):
+
+def train(
+    model,
+    key,
+    epochs=20000,
+    lr=1e-3,
+    validate=True,
+    val_alphas=(0.01, 0.05, 0.1),
+    num_collocation=4000,
+    log_callback=None,
+):
     """Main training loop using Optax.
 
     When `validate` is set, the printed log also reports the mean relative L2
@@ -125,26 +142,22 @@ def train(model, key, epochs=20000, lr=1e-3, validate=True,
         return float(sum(errs) / len(errs))
 
     for epoch in range(epochs):
-        model, opt_state, loss = train_step(
-            model, opt_state, optimizer, collocation_points
-        )
+        model, opt_state, loss = train_step(model, opt_state, optimizer, collocation_points)
 
         if epoch % 100 == 0 or epoch == epochs - 1:
             mrl2 = mean_rel_l2(model) if (validate or log_callback is not None) else None
             if validate:
-                print(f"Epoch {epoch:04d} | Loss: {loss:.6f} "
-                      f"| mean rel L2: {mrl2:.3e}")
+                print(f"Epoch {epoch:04d} | Loss: {loss:.6f} | mean rel L2: {mrl2:.3e}")
             else:
                 print(f"Epoch {epoch:04d} | Loss: {loss:.6f}")
 
             if log_callback is not None:
-                metrics = compute_loss_components(
-                    model, collocation_points, ic_points, bc_points
-                )
+                metrics = compute_loss_components(model, collocation_points, ic_points, bc_points)
                 metrics["mean_rel_l2"] = mrl2
                 log_callback(epoch, metrics)
 
     return model
+
 
 def export_to_json(model, filepath="pinn_model.json"):
     """
@@ -175,12 +188,13 @@ def export_to_json(model, filepath="pinn_model.json"):
         # optional bias of shape (out_features,).
         weight = np.asarray(layer.weight, dtype=np.float64)
         bias = layer.bias
-        bias = (np.zeros(weight.shape[0]) if bias is None
-                else np.asarray(bias, dtype=np.float64))
-        layers.append({
-            "weight": weight.tolist(),
-            "bias": bias.tolist(),
-        })
+        bias = np.zeros(weight.shape[0]) if bias is None else np.asarray(bias, dtype=np.float64)
+        layers.append(
+            {
+                "weight": weight.tolist(),
+                "bias": bias.tolist(),
+            }
+        )
 
     payload = {
         "format": "tanh-mlp-heat-v2",

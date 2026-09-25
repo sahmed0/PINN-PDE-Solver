@@ -16,7 +16,9 @@ def test_training_loop_and_export(tmp_path):
     trained_model = train(model, key, epochs=2, lr=1e-3)
 
     # Ensure the returned object is still our Equinox module
-    assert isinstance(trained_model, ParametricPINN), "Training did not return a valid model instance."
+    assert isinstance(trained_model, ParametricPINN), (
+        "Training did not return a valid model instance."
+    )
 
     # 2. Test JSON weights export
     test_filepath = str(tmp_path / "test_pinn_model.json")

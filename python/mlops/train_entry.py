@@ -36,14 +36,26 @@ def parse_args(argv=None):
     p.add_argument("--depth", type=int, default=3)
     p.add_argument("--num-collocation", type=int, default=4000)
     p.add_argument("--seed", type=int, default=42)
-    p.add_argument("--output-dir", type=str, default=None,
-                   help="Defaults to a timestamped dir under python/outputs/.")
-    p.add_argument("--tracking-uri", type=str, default=None,
-                   help="MLflow tracking URI. None -> local mlruns (unless "
-                        "MLFLOW_TRACKING_URI is set in the env, which wins).")
+    p.add_argument(
+        "--output-dir",
+        type=str,
+        default=None,
+        help="Defaults to a timestamped dir under python/outputs/.",
+    )
+    p.add_argument(
+        "--tracking-uri",
+        type=str,
+        default=None,
+        help="MLflow tracking URI. None -> local mlruns (unless "
+        "MLFLOW_TRACKING_URI is set in the env, which wins).",
+    )
     p.add_argument("--experiment-name", type=str, default=config.EXPERIMENT_NAME)
-    p.add_argument("--config-name", type=str, default="baseline",
-                   help="Label for this run (e.g. 'baseline'/'weak'); logged as a tag.")
+    p.add_argument(
+        "--config-name",
+        type=str,
+        default="baseline",
+        help="Label for this run (e.g. 'baseline'/'weak'); logged as a tag.",
+    )
     # NOTE: --num-bc / --num-ic are intentionally NOT exposed. The existing
     # train() only accepts num_collocation; IC/BC counts are hardcoded in
     # generate_training_data and contribute no gradient under the hard-constraint
@@ -68,8 +80,14 @@ def main(argv=None):
     model_key, train_key = jr.split(key)
     model = ParametricPINN(model_key, width_size=args.width_size, depth=args.depth)
 
-    history = {"epoch": [], "total_loss": [], "loss_pde": [],
-               "loss_ic": [], "loss_bc": [], "mean_rel_l2": []}
+    history = {
+        "epoch": [],
+        "total_loss": [],
+        "loss_pde": [],
+        "loss_ic": [],
+        "loss_bc": [],
+        "mean_rel_l2": [],
+    }
 
     def log_callback(epoch, metrics):
         for k, v in metrics.items():
@@ -77,36 +95,41 @@ def main(argv=None):
             if k != "epoch":
                 history[k].append(v)
         history["epoch"].append(epoch)
-        mlflow.log_metrics(
-            {k: float(v) for k, v in metrics.items() if v is not None}, step=epoch
-        )
+        mlflow.log_metrics({k: float(v) for k, v in metrics.items() if v is not None}, step=epoch)
 
     with mlflow.start_run() as run:
         run_id = run.info.run_id
         mlflow.set_tag("config_name", args.config_name)
-        mlflow.log_params({
-            "lr": args.lr,
-            "epochs": args.epochs,
-            "width_size": args.width_size,
-            "depth": args.depth,
-            "num_collocation": args.num_collocation,
-            "seed": args.seed,
-            "config_name": args.config_name,
-        })
+        mlflow.log_params(
+            {
+                "lr": args.lr,
+                "epochs": args.epochs,
+                "width_size": args.width_size,
+                "depth": args.depth,
+                "num_collocation": args.num_collocation,
+                "seed": args.seed,
+                "config_name": args.config_name,
+            }
+        )
 
         trained = train_mod.train(
-            model, train_key,
-            epochs=args.epochs, lr=args.lr,
+            model,
+            train_key,
+            epochs=args.epochs,
+            lr=args.lr,
             num_collocation=args.num_collocation,
-            validate=True, log_callback=log_callback,
+            validate=True,
+            log_callback=log_callback,
         )
 
         # Final evaluation against the analytical solution (training val_alphas).
         metrics = analytical.evaluate(trained)
-        mlflow.log_metrics({
-            "final_mean_rel_l2": metrics["mean_rel_l2"],
-            "final_mean_linf": metrics["mean_linf"],
-        })
+        mlflow.log_metrics(
+            {
+                "final_mean_rel_l2": metrics["mean_rel_l2"],
+                "final_mean_linf": metrics["mean_linf"],
+            }
+        )
 
         # Persist the model artefact dir (model.eqx + architecture.json + json).
         serialization.save_model(trained, out_dir, args.width_size, args.depth)
@@ -126,16 +149,19 @@ def main(argv=None):
         # which Azure ML auto-captures from outputs/, so a logging failure
         # (e.g. an mlflow/azureml-mlflow artifact-builder version mismatch)
         # must NOT fail an otherwise-successful training run.
-        artifacts = [os.path.join(out_dir, name) for name in (
-            config.MODEL_FILENAME, config.ARCH_FILENAME,
-            config.FRONTEND_JSON_FILENAME)]
+        artifacts = [
+            os.path.join(out_dir, name)
+            for name in (config.MODEL_FILENAME, config.ARCH_FILENAME, config.FRONTEND_JSON_FILENAME)
+        ]
         artifacts += [loss_png, sol_png, metrics_path]
         for path in artifacts:
             try:
                 mlflow.log_artifact(path)
             except Exception as exc:  # noqa: BLE001 -- never fail the run on logging
-                print(f"WARNING: mlflow.log_artifact failed for {path}: {exc!r} "
-                      "(file is still in outputs/ and captured by Azure ML)")
+                print(
+                    f"WARNING: mlflow.log_artifact failed for {path}: {exc!r} "
+                    "(file is still in outputs/ and captured by Azure ML)"
+                )
 
     print(f"\nRun id:    {run_id}")
     print(f"Output dir: {out_dir}")

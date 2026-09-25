@@ -22,8 +22,9 @@ def test_inverse_pinn_output_and_alpha_is_trainable():
 
     # alpha must be a differentiable array leaf, i.e. survive eqx.is_array filtering.
     leaves = jax.tree_util.tree_leaves(eqx.filter(model, eqx.is_array))
-    assert any(leaf.shape == () and jnp.allclose(leaf, 0.05) for leaf in leaves), \
+    assert any(leaf.shape == () and jnp.allclose(leaf, 0.05) for leaf in leaves), (
         "alpha scalar is not present as a trainable array leaf."
+    )
 
 
 def test_generate_observations_shapes_and_noise():
@@ -39,6 +40,7 @@ def test_generate_observations_shapes_and_noise():
 
     # Noise must actually be present: observations differ from the clean field.
     from pinn.analytical import u_exact
+
     clean = u_exact(X_obs[:, 0:1], X_obs[:, 1:2], alpha_true)
     assert float(jnp.mean(jnp.abs(u_obs - clean))) > 1e-4
 
@@ -86,9 +88,9 @@ def test_train_inverse_converges_near_alpha_true():
     # run lands (see train_inverse); 500 steps along the full schedule already
     # carries alpha well within tolerance.
     model, _ = train_inverse(
-        alpha_true=alpha_true, key=jr.PRNGKey(0), epochs=500,
-        num_collocation=1000, decay_steps=2000
+        alpha_true=alpha_true, key=jr.PRNGKey(0), epochs=500, num_collocation=1000, decay_steps=2000
     )
     alpha_est = float(model.alpha)
-    assert abs(alpha_est - alpha_true) / alpha_true < 0.20, \
+    assert abs(alpha_est - alpha_true) / alpha_true < 0.20, (
         f"alpha estimate {alpha_est} not within 20% of {alpha_true}"
+    )

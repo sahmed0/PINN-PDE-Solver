@@ -47,12 +47,17 @@ def test_register_called_on_pass(tmp_path, monkeypatch):
     client = _mock_client(version="7")
     monkeypatch.setattr(gate, "_make_ml_client", lambda: client)
 
-    rc = gate.main([
-        "--model-dir", str(out_dir),
-        "--output", str(tmp_path / "gate_result.json"),
-        "--register",
-        "--config-name", "baseline",
-    ])
+    rc = gate.main(
+        [
+            "--model-dir",
+            str(out_dir),
+            "--output",
+            str(tmp_path / "gate_result.json"),
+            "--register",
+            "--config-name",
+            "baseline",
+        ]
+    )
 
     assert rc == 0
     client.models.create_or_update.assert_called_once()
@@ -71,11 +76,15 @@ def test_register_not_called_on_fail(tmp_path, monkeypatch):
     client = _mock_client()
     monkeypatch.setattr(gate, "_make_ml_client", lambda: client)
 
-    rc = gate.main([
-        "--model-dir", str(out_dir),
-        "--output", str(tmp_path / "gate_result.json"),
-        "--register",
-    ])
+    rc = gate.main(
+        [
+            "--model-dir",
+            str(out_dir),
+            "--output",
+            str(tmp_path / "gate_result.json"),
+            "--register",
+        ]
+    )
 
     assert rc != 0
     client.models.create_or_update.assert_not_called()

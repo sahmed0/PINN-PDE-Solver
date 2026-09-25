@@ -30,8 +30,8 @@ def forward_from_payload(payload: dict, inputs: np.ndarray) -> np.ndarray:
 
     layers = payload["layers"]
     for i, layer in enumerate(layers):
-        w = np.asarray(layer["weight"], dtype=np.float64)   # (out, in)
-        b = np.asarray(layer["bias"], dtype=np.float64)     # (out,)
+        w = np.asarray(layer["weight"], dtype=np.float64)  # (out, in)
+        b = np.asarray(layer["bias"], dtype=np.float64)  # (out,)
         a = a @ w.T + b
         if i < len(layers) - 1:
             a = np.tanh(a)
@@ -41,7 +41,7 @@ def forward_from_payload(payload: dict, inputs: np.ndarray) -> np.ndarray:
     t_phys = x[:, 1]
     ansatz = payload["ansatz"]
     if ansatz == "heat_dirichlet_sin":
-        return np.sin(np.pi * x_phys) + (1.0 - x_phys ** 2) * t_phys * n
+        return np.sin(np.pi * x_phys) + (1.0 - x_phys**2) * t_phys * n
     if ansatz == "burgers_dirichlet_negsin":
-        return -np.sin(np.pi * x_phys) + (1.0 - x_phys ** 2) * t_phys * n
+        return -np.sin(np.pi * x_phys) + (1.0 - x_phys**2) * t_phys * n
     raise ValueError(f"Unknown ansatz {ansatz!r} in payload.")

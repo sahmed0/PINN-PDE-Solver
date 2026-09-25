@@ -28,10 +28,8 @@ ACCURACY_THRESHOLD = 2.8e-2
 @pytest.mark.slow
 def test_training_reaches_expected_accuracy():
     model = ParametricPINN(jr.PRNGKey(42))
-    model = train(model, jr.PRNGKey(0), epochs=2000,
-                  num_collocation=1000, validate=False)
+    model = train(model, jr.PRNGKey(0), epochs=2000, num_collocation=1000, validate=False)
     mean_rel_l2 = evaluate(model)["mean_rel_l2"]
     assert mean_rel_l2 < ACCURACY_THRESHOLD, (
-        f"mean rel-L2 {mean_rel_l2:.3e} exceeds regression threshold "
-        f"{ACCURACY_THRESHOLD:.3e}"
+        f"mean rel-L2 {mean_rel_l2:.3e} exceeds regression threshold {ACCURACY_THRESHOLD:.3e}"
     )

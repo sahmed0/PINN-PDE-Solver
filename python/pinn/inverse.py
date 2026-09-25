@@ -75,13 +75,15 @@ class InversePINN(eqx.Module):
     the difference, biasing the estimate low. Enforcing them exactly removes that
     bias and lets the data alone pin down alpha.
     """
+
     mlp: eqx.nn.MLP
     alpha: jnp.ndarray
     input_center: tuple = eqx.field(static=True)
     input_scale: tuple = eqx.field(static=True)
 
-    def __init__(self, key: jr.PRNGKey, alpha_init: float = 0.05,
-                 width_size: int = 32, depth: int = 3):
+    def __init__(
+        self, key: jr.PRNGKey, alpha_init: float = 0.05, width_size: int = 32, depth: int = 3
+    ):
         self.mlp = eqx.nn.MLP(
             in_size=2,
             out_size=1,
@@ -174,8 +176,9 @@ def inverse_residual(model, x, t):
     return u_t - alpha * u_xx
 
 
-def compute_inverse_loss(model, collocation_points, ic_points, bc_points,
-                         obs_points, w_ic=10.0, w_bc=10.0, w_data=100.0):
+def compute_inverse_loss(
+    model, collocation_points, ic_points, bc_points, obs_points, w_ic=10.0, w_bc=10.0, w_data=100.0
+):
     """
     Total inverse loss: PDE residual + data misfit (+ harmless IC/BC checks).
 
@@ -192,7 +195,7 @@ def compute_inverse_loss(model, collocation_points, ic_points, bc_points,
     x_c, t_c = collocation_points[:, 0], collocation_points[:, 1]
     vmap_residual = jax.vmap(inverse_residual, in_axes=(None, 0, 0))
     residuals = vmap_residual(model, x_c, t_c)
-    loss_pde = jnp.mean(residuals ** 2)
+    loss_pde = jnp.mean(residuals**2)
 
     X_ic, u_ic_true = ic_points
     u_ic_pred = jax.vmap(model)(X_ic)
@@ -210,8 +213,9 @@ def compute_inverse_loss(model, collocation_points, ic_points, bc_points,
 
 
 @eqx.filter_jit
-def inverse_train_step(model, opt_state, optimizer, collocation_points,
-                       ic_points, bc_points, obs_points):
+def inverse_train_step(
+    model, opt_state, optimizer, collocation_points, ic_points, bc_points, obs_points
+):
     """Single compiled Adam-phase optimisation step for the inverse problem."""
     loss_val, grads = eqx.filter_value_and_grad(compute_inverse_loss)(
         model, collocation_points, ic_points, bc_points, obs_points
@@ -275,10 +279,20 @@ def _lbfgs_polish(model, loss_closure, steps):
     return eqx.combine(params, static)
 
 
-def train_inverse(alpha_true=0.042, key=None, epochs=2000, lr=1e-3,
-                  alpha_lr=5e-3, alpha_init=0.05, n_obs=200, noise_sigma=0.01,
-                  num_collocation=1000, decay_steps=None, lbfgs_steps=300,
-                  verbose=True):
+def train_inverse(
+    alpha_true=0.042,
+    key=None,
+    epochs=2000,
+    lr=1e-3,
+    alpha_lr=5e-3,
+    alpha_init=0.05,
+    n_obs=200,
+    noise_sigma=0.01,
+    num_collocation=1000,
+    decay_steps=None,
+    lbfgs_steps=300,
+    verbose=True,
+):
     """
     Fit InversePINN to noisy observations and recover alpha.
 
@@ -303,8 +317,7 @@ def train_inverse(alpha_true=0.042, key=None, epochs=2000, lr=1e-3,
     k_model, k_obs, k_data = _split_keys(key)
 
     model = InversePINN(k_model, alpha_init=alpha_init)
-    obs_points = generate_observations(k_obs, alpha_true, n_obs=n_obs,
-                                       noise_sigma=noise_sigma)
+    obs_points = generate_observations(k_obs, alpha_true, n_obs=n_obs, noise_sigma=noise_sigma)
     collocation_points, ic_points, bc_points = generate_inverse_data(
         k_data, num_collocation=num_collocation
     )
@@ -323,40 +336,50 @@ def train_inverse(alpha_true=0.042, key=None, epochs=2000, lr=1e-3,
     history = []
     for epoch in range(epochs):
         model, opt_state, loss = inverse_train_step(
-            model, opt_state, optimizer, collocation_points,
-            ic_points, bc_points, obs_points
+            model, opt_state, optimizer, collocation_points, ic_points, bc_points, obs_points
         )
 
         if epoch % 100 == 0 or epoch == epochs - 1:
             alpha_est = float(model.alpha)
             alpha_error = abs(alpha_est - alpha_true)
-            history.append({
-                "epoch": epoch,
-                "loss": float(loss),
-                "alpha_est": alpha_est,
-                "alpha_error": alpha_error,
-            })
+            history.append(
+                {
+                    "epoch": epoch,
+                    "loss": float(loss),
+                    "alpha_est": alpha_est,
+                    "alpha_error": alpha_error,
+                }
+            )
             if verbose:
-                print(f"Epoch {epoch:04d} | Loss: {loss:.6f} "
-                      f"| alpha_est: {alpha_est:.5f} | alpha_err: {alpha_error:.5f}")
+                print(
+                    f"Epoch {epoch:04d} | Loss: {loss:.6f} "
+                    f"| alpha_est: {alpha_est:.5f} | alpha_err: {alpha_error:.5f}"
+                )
 
     # L-BFGS polish to seat alpha exactly at the data optimum.
     def loss_closure(m):
-        return compute_inverse_loss(m, collocation_points, ic_points,
-                                    bc_points, obs_points)
+        return compute_inverse_loss(m, collocation_points, ic_points, bc_points, obs_points)
 
     model = _lbfgs_polish(model, loss_closure, lbfgs_steps)
     if verbose:
         a = float(model.alpha)
-        print(f"L-BFGS polish ({lbfgs_steps} steps) | alpha_est: {a:.5f} "
-              f"| alpha_err: {abs(a - alpha_true):.5f}")
+        print(
+            f"L-BFGS polish ({lbfgs_steps} steps) | alpha_est: {a:.5f} "
+            f"| alpha_err: {abs(a - alpha_true):.5f}"
+        )
 
     return model, history
 
 
-def evaluate_inverse_uncertainty(alpha_true=0.042, n_seeds=8, n_obs=200,
-                                 noise_sigma=0.01, epochs=2000, verbose=True,
-                                 **train_kwargs):
+def evaluate_inverse_uncertainty(
+    alpha_true=0.042,
+    n_seeds=8,
+    n_obs=200,
+    noise_sigma=0.01,
+    epochs=2000,
+    verbose=True,
+    **train_kwargs,
+):
     """
     Repeat the recovery over independent noise realisations to measure the
     estimator's empirical spread, and compare it to the CRLB floor.
@@ -370,8 +393,13 @@ def evaluate_inverse_uncertainty(alpha_true=0.042, n_seeds=8, n_obs=200,
     estimates = []
     for s in range(n_seeds):
         model, _ = train_inverse(
-            alpha_true=alpha_true, key=jr.PRNGKey(s), epochs=epochs,
-            n_obs=n_obs, noise_sigma=noise_sigma, verbose=False, **train_kwargs
+            alpha_true=alpha_true,
+            key=jr.PRNGKey(s),
+            epochs=epochs,
+            n_obs=n_obs,
+            noise_sigma=noise_sigma,
+            verbose=False,
+            **train_kwargs,
         )
         est = float(model.alpha)
         estimates.append(est)
@@ -381,8 +409,7 @@ def evaluate_inverse_uncertainty(alpha_true=0.042, n_seeds=8, n_obs=200,
     estimates = np.asarray(estimates)
     # CRLB on a representative observation design (seed 0's actual points).
     _, k_obs, _ = _split_keys(jr.PRNGKey(0))
-    X_obs, _ = generate_observations(k_obs, alpha_true, n_obs=n_obs,
-                                     noise_sigma=noise_sigma)
+    X_obs, _ = generate_observations(k_obs, alpha_true, n_obs=n_obs, noise_sigma=noise_sigma)
     crlb = crlb_std(X_obs, alpha_true, noise_sigma)
 
     return {
@@ -397,8 +424,9 @@ def evaluate_inverse_uncertainty(alpha_true=0.042, n_seeds=8, n_obs=200,
     }
 
 
-def export_inverse_to_json(model, obs_points, alpha_true, stats=None,
-                           filepath="inverse_model.json"):
+def export_inverse_to_json(
+    model, obs_points, alpha_true, stats=None, filepath="inverse_model.json"
+):
     """
     Export the inverse result for the frontend: the true and recovered alpha, the
     recovered-alpha uncertainty (empirical std over noise realisations) and the
@@ -431,8 +459,9 @@ def export_inverse_to_json(model, obs_points, alpha_true, stats=None,
         payload["n_seeds"] = int(stats["n_seeds"])
         # The CRLB-floor-by-design table, so the UI can show how the information
         # limit moves with the experiment (N, sigma, time horizon).
-        payload["design_sweep"] = design_sweep(alpha=float(alpha_true),
-                                               sigma=float(stats["noise_sigma"]))
+        payload["design_sweep"] = design_sweep(
+            alpha=float(alpha_true), sigma=float(stats["noise_sigma"])
+        )
 
     print(f"Exporting inverse result to {filepath}...")
     with open(filepath, "w", encoding="utf-8") as f:
@@ -440,8 +469,9 @@ def export_inverse_to_json(model, obs_points, alpha_true, stats=None,
     print("Export complete.")
 
 
-def run_inverse_demo(alpha_true=0.042, epochs=2000, seed=0, n_seeds=8,
-                     n_obs=200, noise_sigma=0.01, export_path=None):
+def run_inverse_demo(
+    alpha_true=0.042, epochs=2000, seed=0, n_seeds=8, n_obs=200, noise_sigma=0.01, export_path=None
+):
     """
     End-to-end inverse demo: recover alpha over several noise realisations, report
     the estimate with an uncertainty band against the Cramer-Rao floor, and
@@ -454,8 +484,11 @@ def run_inverse_demo(alpha_true=0.042, epochs=2000, seed=0, n_seeds=8,
     print("\n--- Inverse Problem: recovering alpha from sparse, noisy data ---")
 
     stats = evaluate_inverse_uncertainty(
-        alpha_true=alpha_true, n_seeds=n_seeds, n_obs=n_obs,
-        noise_sigma=noise_sigma, epochs=epochs,
+        alpha_true=alpha_true,
+        n_seeds=n_seeds,
+        n_obs=n_obs,
+        noise_sigma=noise_sigma,
+        epochs=epochs,
     )
 
     mean, std, crlb = stats["mean"], stats["std"], stats["crlb_std"]
@@ -463,23 +496,28 @@ def run_inverse_demo(alpha_true=0.042, epochs=2000, seed=0, n_seeds=8,
     print(f"\nInverse problem report (over {n_seeds} noise realisations):")
     print(f"    true alpha        : {alpha_true:.5f}")
     print(f"    recovered alpha   : {mean:.5f} +/- {std:.5f}  (1 sigma)")
-    print(f"    relative error    : {abs(bias) / alpha_true * 100:.2f}% (bias) "
-          f"| {std / alpha_true * 100:.2f}% (spread)")
+    print(
+        f"    relative error    : {abs(bias) / alpha_true * 100:.2f}% (bias) "
+        f"| {std / alpha_true * 100:.2f}% (spread)"
+    )
     print(f"    Cramer-Rao floor  : {crlb:.5f}  ({crlb / alpha_true * 100:.2f}% of true)")
-    print(f"    saturation        : spread / CRLB = {std / crlb:.2f}x "
-          f"(1.0x = information-limited)")
+    print(f"    saturation        : spread / CRLB = {std / crlb:.2f}x (1.0x = information-limited)")
 
     # Train one representative model on `seed` for the exported field/scatter.
     key = jr.PRNGKey(seed)
-    model, _ = train_inverse(alpha_true=alpha_true, key=key, epochs=epochs,
-                             n_obs=n_obs, noise_sigma=noise_sigma, verbose=False)
+    model, _ = train_inverse(
+        alpha_true=alpha_true,
+        key=key,
+        epochs=epochs,
+        n_obs=n_obs,
+        noise_sigma=noise_sigma,
+        verbose=False,
+    )
 
     if export_path is not None:
         _, k_obs, _ = _split_keys(key)
-        obs_points = generate_observations(k_obs, alpha_true, n_obs=n_obs,
-                                           noise_sigma=noise_sigma)
-        export_inverse_to_json(model, obs_points, alpha_true, stats=stats,
-                               filepath=export_path)
+        obs_points = generate_observations(k_obs, alpha_true, n_obs=n_obs, noise_sigma=noise_sigma)
+        export_inverse_to_json(model, obs_points, alpha_true, stats=stats, filepath=export_path)
 
     return model, stats
 

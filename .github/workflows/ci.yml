@@ -1,10 +1,7 @@
 name: CI
 
 # Push CI proves the offline story on every change: the Python suite (offline,
-# Azure mocked) + ruff lint, and the frontend lint + production build.
-#
-# Lint is ruff check only - deliberately no `ruff format`. Reformatting the whole
-# codebase would destroy git blame and produce a giant no-op diff.
+# Azure mocked) plus ruff lint and format checks, and the frontend lint and build.
 
 on:
   push:
@@ -24,6 +21,7 @@ jobs:
           python-version: "3.12"
       - run: uv sync --group dev --group mlops
       - run: uv run ruff check .
+      - run: uv run ruff format --check .
       - run: uv run pytest -m "not slow"
 
   frontend:

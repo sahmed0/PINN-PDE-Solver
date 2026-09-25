@@ -32,8 +32,7 @@ from pinn.model import ParametricPINN
 from pinn.train import train
 
 
-def run_study(collocation_counts=(100, 250, 500, 1000, 2000, 4000),
-              epochs=2000, lr=1e-3, seed=42):
+def run_study(collocation_counts=(100, 250, 500, 1000, 2000, 4000), epochs=2000, lr=1e-3, seed=42):
     """Train one model per collocation count and return (counts, mean rel L2).
 
     Uses the production `train()` loop (cosine-annealed Adam) so the measured
@@ -46,8 +45,7 @@ def run_study(collocation_counts=(100, 250, 500, 1000, 2000, 4000),
         key = jr.PRNGKey(seed)
         model_key, data_key = jr.split(key)
         model = ParametricPINN(model_key)
-        model = train(model, data_key, epochs=epochs, lr=lr,
-                      num_collocation=n, validate=False)
+        model = train(model, data_key, epochs=epochs, lr=lr, num_collocation=n, validate=False)
         metrics = evaluate(model)
         errors.append(metrics["mean_rel_l2"])
         print(f"    -> mean rel L2 = {metrics['mean_rel_l2']:.3e}")
@@ -60,8 +58,10 @@ def plot(counts, errors, out_path):
     ax.loglog(counts, errors, "o-", color="#2563eb", linewidth=2, markersize=7)
     ax.set_xlabel("Number of collocation points")
     ax.set_ylabel("Mean relative $L_2$ error")
-    ax.set_title("PINN convergence vs. collocation density\n"
-                 "(1D heat equation, reduced-budget 2000-epoch study)")
+    ax.set_title(
+        "PINN convergence vs. collocation density\n"
+        "(1D heat equation, reduced-budget 2000-epoch study)"
+    )
     ax.grid(True, which="both", linestyle=":", alpha=0.6)
     fig.tight_layout()
     fig.savefig(out_path, dpi=150)
