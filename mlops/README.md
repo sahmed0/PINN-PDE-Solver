@@ -337,9 +337,22 @@ az ml online-endpoint show --name pinn-heat-endpoint --query scoring_uri -o tsv
 az ml online-endpoint get-credentials --name pinn-heat-endpoint --query primaryKey -o tsv
 ```
 
-POST either payload shape with a `Bearer <key>` header. See the
-[docs/live-endpoint-info/](../docs/live-endpoint-info/) directory for ready-made
-Python, JavaScript, and C# consumption snippets. These snippets are the default consumption examples provided by Azure.
+POST a JSON body with a `Bearer <key>` header. For example, the point-list shape
+(one `[x, t, alpha]` row per query point) from PowerShell:
+
+```powershell
+$uri = az ml online-endpoint show --name pinn-heat-endpoint --query scoring_uri -o tsv
+$key = az ml online-endpoint get-credentials --name pinn-heat-endpoint --query primaryKey -o tsv
+$body = @{ inputs = @(@(0.0, 0.1, 0.05), @(0.5, 0.5, 0.05)) } | ConvertTo-Json -Compress
+Invoke-RestMethod -Method Post -Uri $uri -ContentType "application/json" `
+  -Headers @{ Authorization = "Bearer $key" } -Body $body
+# -> {"predictions": [u, u]}
+```
+
+For a full solution field, send the grid shape instead:
+`{"grid": {"alpha": 0.05, "nx": 100, "nt": 100}}` returns `{"x": [...], "t": [...], "u": [[...]]}`
+with `u` shaped `(nt, nx)`. `{"health": "ping"}` is a health echo that returns
+`{"status": "ok", "model_loaded": ..., "format": ...}` without running the model.
 
 ### 6. Teardown
 
