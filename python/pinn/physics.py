@@ -54,8 +54,8 @@ def compute_loss_components(model, collocation_points, ic_points, bc_points, w_i
 
     Same arithmetic as `compute_loss`, but exposes the breakdown for logging
     (PDE residual, IC, BC, and the weighted total). This is a read-only helper
-    for instrumentation -- the gradient step still uses `compute_loss` so the
-    training dynamics are unchanged.
+    for instrumentation -- the gradient step uses `compute_loss`, so logging
+    does not affect the training dynamics.
     """
     x_c, t_c, alpha_c = (
         collocation_points[:, 0],

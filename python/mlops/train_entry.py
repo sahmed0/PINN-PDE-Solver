@@ -1,6 +1,6 @@
 """Parametrised heat-equation training entrypoint with MLflow instrumentation.
 
-Reproduces the existing heat-equation training as a CLI that logs hyperparameters,
+Wraps the heat-equation training (``pinn.train``) in a CLI that logs hyperparameters,
 per-epoch metrics, and output artefacts to MLflow. Runs identically locally (local
 `mlruns/`) and inside an Azure ML job (workspace tracking URI injected via env) --
 the precedence lives in `logging_utils.setup_mlflow`.
@@ -56,10 +56,9 @@ def parse_args(argv=None):
         default="baseline",
         help="Label for this run (e.g. 'baseline'/'weak'); logged as a tag.",
     )
-    # NOTE: --num-bc / --num-ic are intentionally NOT exposed. The existing
-    # train() only accepts num_collocation; IC/BC counts are hardcoded in
-    # generate_training_data and contribute no gradient under the hard-constraint
-    # ansatz (physics.py).
+    # NOTE: --num-bc / --num-ic are intentionally NOT exposed. train() only accepts
+    # num_collocation; IC/BC counts are fixed in generate_training_data and
+    # contribute no gradient under the hard-constraint ansatz (physics.py).
     return p.parse_args(argv)
 
 
@@ -75,7 +74,7 @@ def main(argv=None):
 
     logging_utils.setup_mlflow(args.tracking_uri, args.experiment_name)
 
-    # --seed now controls all sampling (model init, collocation, and IC/BC points).
+    # `--seed` controls all sampling (model init, collocation, and IC/BC points).
     key = jr.PRNGKey(args.seed)
     model_key, train_key = jr.split(key)
     model = ParametricPINN(model_key, width_size=args.width_size, depth=args.depth)

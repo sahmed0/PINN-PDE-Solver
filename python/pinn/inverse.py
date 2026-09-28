@@ -17,8 +17,8 @@ therefore the Cramer-Rao lower bound (see crlb.py): the smallest error any
 unbiased estimator could achieve. The pieces below are designed to reach it:
 
   * a hard-constraint ansatz (as in the forward ParametricPINN) bakes the IC/BCs
-    in exactly, so alpha no longer absorbs IC/BC fitting error -- this removes a
-    systematic downward bias in the estimate;
+    in exactly, so alpha cannot absorb IC/BC fitting error -- which would otherwise
+    bias the estimate systematically downward;
   * alpha gets its own, faster optimiser (it is one tiny-magnitude scalar with a
     weak gradient, so it needs a larger step than the network weights);
   * an L-BFGS polish after Adam seats alpha exactly at the data optimum, pulling
@@ -43,7 +43,7 @@ from pinn.analytical import u_exact
 from pinn.crlb import crlb_std, design_sweep
 from pinn.forward import heat_ansatz, normalised_mlp
 
-# Inputs here are only [x, t] (alpha is no longer an input but an unknown), so we
+# Inputs here are only [x, t] (alpha is not an input but an unknown), so we
 # normalise both to ~[-1, 1] before the MLP exactly as the forward model does.
 INPUT_CENTER = (0.0, 0.5)
 INPUT_SCALE = (1.0, 0.5)
@@ -132,8 +132,8 @@ def generate_inverse_data(key, num_collocation=1000, num_bc=100, num_ic=100):
 
     Same domains and IC/BC profile as the forward problem (IC u(x,0)=sin(pi x),
     zero Dirichlet BCs), but every point is just [x, t] -- alpha is not an input.
-    The IC/BC sets are now enforced exactly by the ansatz, so they are retained
-    only as a cheap wiring check in compute_inverse_loss (their loss is ~0).
+    The ansatz enforces the IC/BCs exactly, so these sets serve only as a cheap
+    wiring check in compute_inverse_loss (their loss is ~0).
     """
     k_x, k_t = jr.split(key, 2)
     x_c = jr.uniform(k_x, (num_collocation, 1), minval=-1.0, maxval=1.0)
@@ -186,7 +186,7 @@ def compute_inverse_loss(
     the PDE alone admits a family of (u, alpha) pairs, and only the observations
     pin the field -- and therefore alpha -- to the true solution.
 
-    NOTE: the IC and BC are now enforced *exactly* by the ansatz (see
+    NOTE: the ansatz enforces the IC and BC *exactly* (see
     InversePINN.__call__), so loss_ic and loss_bc are structurally ~0 and add no
     gradient. They are kept as a cheap runtime check that the ansatz is wired up
     correctly; the weights are harmless. The PDE residual and the data misfit are

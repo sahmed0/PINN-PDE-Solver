@@ -1,18 +1,17 @@
 """Shared forward-pass cores for the three PINN models.
 
-The input normalisation and the two hard-constraint ansatze were copy-pasted into
-``ParametricPINN``, ``BurgersPINN`` and ``InversePINN`` (and mirrored again in the
-browser and in the float64 JSON reference). This module holds the single source of
-truth for the JAX side so a future edit can't silently diverge one copy.
+``ParametricPINN``, ``BurgersPINN`` and ``InversePINN`` share the input normalisation
+and the two hard-constraint ansatze (which are mirrored again in the browser and in
+the float64 JSON reference). This module is the single source of truth for the JAX
+side, so the three models cannot silently diverge.
 
 Why plain functions and not a shared ``eqx.Module`` (e.g. a ``NormalisedMLP`` layer):
 trained models persist via ``eqx.tree_deserialise_leaves`` into a *live* skeleton,
-so the pytree structure of the three classes must stay byte-for-byte what the
-existing ``.eqx`` checkpoints were written with (local baselines, MLflow runs, the
-Azure registry artifact). Wrapping the MLP in a new module would change every
-class's field layout and break deserialisation. Refactoring the ``__call__`` bodies
-into free functions keeps the modules structurally identical while removing the
-duplication.
+so the pytree structure of ``ParametricPINN``, ``BurgersPINN`` and ``InversePINN``
+must match what their ``.eqx`` checkpoints were written with (local baselines, MLflow
+runs, the Azure registry artifact). Wrapping the MLP in a new module would change
+every class's field layout and break deserialisation. Free functions share the
+forward-pass body without changing any class's field layout.
 
 The float64 NumPy reference (json_forward.forward_from_payload) deliberately keeps
 its own NumPy ansatz two-liner: it must run with nothing but NumPy over a JSON

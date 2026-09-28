@@ -143,9 +143,8 @@ def generate_burgers_data(key, num_collocation=2000, num_bc=100, num_ic=100):
     train.generate_training_data but every point is just [x, t] (nu is fixed).
     Domains: x in [-1, 1], t in [0, 1].
     """
-    # Collocation stream keyed as before (split(key, 2)); IC/BC keys derived from
-    # a folded-in copy of the seed so --seed controls all sampling (they previously
-    # used hardcoded PRNGKeys).
+    # Collocation points draw from split(key, 2); the IC/BC keys come from a
+    # folded-in copy of the same key, so one seed controls all sampling.
     k_x, k_t = jr.split(key, 2)
     k_ic_x, k_bc_t, k_bc_side = jr.split(jr.fold_in(key, 1), 3)
 

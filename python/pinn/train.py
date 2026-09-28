@@ -44,10 +44,9 @@ def generate_training_data(key, num_collocation=1000, num_bc=100, num_ic=100):
     Generates synthetic training data using uniform random sampling.
     Domains: x in [-1, 1], t in [0, 1], alpha in [0.01, 0.1].
     """
-    # Keep the collocation stream keyed exactly as before (split(key, 3)) so runs
-    # made before the IC/BC seeding fix stay bit-for-bit reproducible. The IC/BC
-    # keys are derived from a folded-in copy of the seed so --seed now controls
-    # ALL sampling (previously they used hardcoded PRNGKeys).
+    # Collocation points draw from split(key, 3); the IC/BC keys come from a
+    # folded-in copy of the same key, so one seed controls ALL sampling while the
+    # two streams stay independent.
     k1, k2, k3 = jr.split(key, 3)
     k_ic_x, k_ic_a, k_bc_t, k_bc_a, k_bc_side = jr.split(jr.fold_in(key, 1), 5)
 
@@ -118,11 +117,11 @@ def train(
     sharpening the fit in late training, which is where most of the accuracy on
     a smooth problem like this comes from.
 
-    `log_callback` is an optional, backward-compatible instrumentation hook. When
-    provided, it is called as `log_callback(epoch, metrics_dict)` at the same
-    `epoch % 100` cadence as the printed log, where `metrics_dict` carries
-    `total_loss`, `loss_pde`, `loss_ic`, `loss_bc`, and `mean_rel_l2`. It does not
-    touch the gradient step; existing callers that pass nothing behave identically.
+    `log_callback` is an optional instrumentation hook. When provided, it is
+    called as `log_callback(epoch, metrics_dict)` at the same `epoch % 100`
+    cadence as the printed log, where `metrics_dict` carries `total_loss`,
+    `loss_pde`, `loss_ic`, `loss_bc`, and `mean_rel_l2`. It does not touch the
+    gradient step, so training is identical with or without it.
     """
     # Cosine-annealed Adam: start at `lr`, decay smoothly toward 0 by the last
     # epoch so late steps fine-tune rather than bounce around the minimum.
@@ -176,7 +175,8 @@ def export_to_json(model, filepath="pinn_model.json"):
       (raw - center) / scale before the MLP.
     - "ansatz" = "heat_dirichlet_sin": reconstruct the temperature from the MLP
       output N as  u = sin(pi x) + (1 - x^2) * t * N,  which makes the IC/BCs
-      exact. The format string is bumped accordingly so stale consumers fail loudly.
+      exact. Consumers check the format string, so one that does not implement
+      this ansatz fails loudly instead of rendering a wrong field.
 
     A "test_vectors" block is also embedded: the float64 reference outputs of a
     fixed set of inputs (PARITY_INPUTS), computed from these very weights. Both

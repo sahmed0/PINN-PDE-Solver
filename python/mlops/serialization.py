@@ -4,7 +4,7 @@ A trained model persists as a directory containing three files:
   - model.eqx        : eqx.tree_serialise_leaves output (canonical Python artefact)
   - architecture.json: {"width_size", "depth", "in_size": 3, "out_size": 1} — needed
                        to rebuild the ParametricPINN skeleton before deserialising.
-  - pinn_model.json  : the existing frontend JSON export (train.export_to_json).
+  - pinn_model.json  : the frontend JSON export (train.export_to_json).
 
 Reload rebuilds the skeleton from architecture.json, then deserialises into it.
 """
@@ -37,7 +37,7 @@ def save_model(model, out_dir, width_size, depth):
     with open(os.path.join(out_dir, config.ARCH_FILENAME), "w", encoding="utf-8") as f:
         json.dump(arch, f, indent=2)
 
-    # Frontend JSON export (tanh-mlp-heat-v2) — the React app still consumes this.
+    # Frontend JSON export (tanh-mlp-heat-v2) — the React app consumes this.
     _train_mod.export_to_json(model, os.path.join(out_dir, config.FRONTEND_JSON_FILENAME))
 
     return out_dir

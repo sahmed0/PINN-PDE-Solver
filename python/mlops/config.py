@@ -12,9 +12,9 @@ REGISTERED_MODEL_NAME = "pinn-heat"
 # --- Gate — BOTH thresholds must be cleared to pass -----------------
 MEAN_REL_L2_THRESHOLD = 1e-2  # in-distribution mean rel-L2 must be BELOW this
 MEAN_REL_L2_OOD_THRESHOLD = 5e-2  # OOD mean rel-L2 must be BELOW this.
-#                                     Tuned empirically: the 20k-epoch
-#                                     baseline clears it ~8x under (OOD=6.1e-3),
-#                                     while the weak config breaches it (OOD=1.7e-1).
+#                                     Set from the measured results: the 20k-epoch
+#                                     baseline clears it ~8x under (OOD 6.1e-3) and
+#                                     the weak config breaches it (OOD 1.7e-1).
 #                                     Looser than the interp threshold because
 #                                     extrapolation is intrinsically harder.
 
@@ -30,7 +30,7 @@ TEST_ALPHAS_OOD = (0.007, 0.12)
 TEST_GRID_NX = 100
 TEST_GRID_NT = 100
 
-# --- Training domains (match existing code; do not change physics) --------
+# --- Training domains (match pinn/train.py; do not change physics) --------
 ALPHA_RANGE = (0.01, 0.1)
 X_RANGE = (-1.0, 1.0)
 T_RANGE = (0.0, 1.0)
@@ -40,7 +40,7 @@ MAX_GRID_POINTS = 250_000  # nx*nt cap: bounds memory on a DS2_v2
 ALPHA_SERVING_RANGE = (0.005, 0.15)  # reject outside; trained range + gated-OOD margin
 
 # --- MLflow logging cadence -----------------------------------------------
-LOG_EVERY = 100  # log metrics every N epochs (matches existing print cadence)
+LOG_EVERY = 100  # log metrics every N epochs (matches the printed log cadence)
 
 # --- Repo-stable paths ----------------------------------------------------
 PYTHON_DIR = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))  # python/

@@ -35,9 +35,8 @@ import json
 import os
 import sys
 
-# Azure inference-container bootstrap (the ONLY remaining sys.path insert in the
-# codebase): the managed deployment mounts this code dir but pip-installs nothing, so
-# put python/ on the path to make `pinn` and `mlops` importable. Local/test use goes
+# The Azure inference container mounts the code directory but pip-installs nothing, so
+# score.py puts python/ on sys.path before importing the packages. Local/test use goes
 # through the installed package, where this insert is a harmless no-op.
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 

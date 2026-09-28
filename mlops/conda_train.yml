@@ -13,11 +13,10 @@ dependencies:
       - equinox==0.13.8
       - optax==0.2.8
       - matplotlib==3.11.0
-      # Pinned to the local uv.lock (3.14.0). Historically this was ceilinged at
-      # <2.9 because mlflow 2.9 began passing tracking_uri= into artifact-repository
-      # builders, which older azureml-mlflow rejected (TypeError on
-      # azureml_artifacts_builder). That pairing is now validated by the training-env
-      # Docker smoke test (README §0), not a version ceiling.
+      # Pinned to the local uv.lock (3.14.0). mlflow >= 2.9 passes tracking_uri= into
+      # artifact-repository builders, which older azureml-mlflow rejects (TypeError on
+      # azureml_artifacts_builder). The training-env Docker smoke test (README §0)
+      # validates this mlflow/azureml-mlflow pairing.
       - mlflow==3.14.0
       # azureml-mlflow makes `mlflow` auto-point at the workspace tracking URI
       # inside an Azure ML job. Without it the run's metrics/artefacts will NOT be
