@@ -1,10 +1,13 @@
-import os
+"""Run the three research demos end to end: heat, inverse, and Burgers'.
 
-# '0' = all logs (default)
-# '1' = filter out INFO logs (this hides the oneDNN message)
-# '2' = filter out INFO and WARNING logs
-# '3' = filter out INFO, WARNING, and ERROR logs
-os.environ["TF_CPP_MIN_LOG_LEVEL"] = "1"
+This is the core-package entrypoint. It trains the parametric heat PINN, validates it against
+the closed-form solution, and exports all three models as JSON for the frontend.
+
+`mlops/train_entry.py` is the MLOps entrypoint for the same heat model: it adds MLflow
+instrumentation, a CLI, and the `.eqx` artefact directory the evaluation gate consumes. Both
+derive the model and data keys the same way from `--seed`, so the same seed gives the same
+weights from either path.
+"""
 
 import os
 
@@ -24,18 +27,16 @@ def main():
     # Using a fixed seed ensures our model initializes the same way every time we run it
     seed = 42
     key = jr.PRNGKey(seed)
+    model_key, train_key = jr.split(key)
 
     # 2. Instantiate the model
     print("Initialising ParametricPINN...")
-    model = ParametricPINN(key)
+    model = ParametricPINN(model_key)
 
     # 3. Train the model
     print("\nStarting optimisation...")
     # You can easily adjust hyperparameters here based on your PDE's complexity.
-    # The model uses normalised inputs + a hard-constraint ansatz (exact IC/BCs),
-    # so the cosine-annealed run below converges to a much tighter fit than the
-    # old 1000-epoch soft-constraint training.
-    trained_model = train(model, key, epochs=20000, lr=1e-3)
+    trained_model = train(model, train_key, epochs=20000, lr=1e-3)
 
     # 3b. Validate against the closed-form solution u = sin(pi x) exp(-alpha pi^2 t).
     print("\nValidation against the analytical solution:")
