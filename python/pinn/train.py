@@ -158,7 +158,7 @@ def train(
     return model
 
 
-def export_to_json(model, filepath="pinn_model.json"):
+def export_to_json(model, filepath="pinn_model.json", provenance=None):
     """
     Exports the trained Equinox MLP to a plain JSON file of weights/biases.
 
@@ -181,6 +181,11 @@ def export_to_json(model, filepath="pinn_model.json"):
     A "test_vectors" block is also embedded: the float64 reference outputs of a
     fixed set of inputs (PARITY_INPUTS), computed from these very weights. Both
     consumers are tested against it so any drift in a re-implementation is caught.
+
+    An optional "provenance" dict (source checkpoint, seed, command, locally measured
+    gate metrics) is embedded verbatim when given. It is metadata only, so the
+    "format" string stays "tanh-mlp-heat-v2": the weights contract is unchanged and
+    every consumer (inference.ts, json_forward.py, score.py) ignores unknown keys.
     """
     layers = []
     for layer in model.mlp.layers:
@@ -211,6 +216,8 @@ def export_to_json(model, filepath="pinn_model.json"):
         "ansatz": "heat_dirichlet_sin",
         "layers": layers,
     }
+    if provenance is not None:
+        payload["provenance"] = provenance
 
     # Golden parity vectors: float64 reference outputs computed from the payload
     # above, so any consumer of this JSON can be pinned to it.
