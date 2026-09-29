@@ -23,6 +23,26 @@ export interface PINNModel {
   // Hard-constraint reconstruction applied to the MLP output (see forwardOne).
   ansatz: string;
   layers: PINNLayer[];
+  // Where these weights came from and the gate metrics measured on them at export time.
+  provenance?: ModelProvenance;
+}
+
+export interface ModelProvenance {
+  source_checkpoint: string;
+  seed: number;
+  command: string;
+  exported_at: string;
+  gate: {
+    mean_rel_l2: number;
+    mean_rel_l2_ood: number;
+    threshold: number;
+    threshold_ood: number;
+    alphas_interp: number[];
+    alphas_ood: number[];
+    grid: [number, number];
+    passed: boolean;
+  };
+  note: string;
 }
 
 // 0. Load the exported weights (served from frontend/public/pinn_model.json).
