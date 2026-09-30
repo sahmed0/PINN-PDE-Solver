@@ -1,10 +1,14 @@
-# PINN PDE Solver – with an Azure MLOps production pipeline
+# PINN PDE Solver — an evaluation-gated Azure ML pipeline
 
-![CI](https://github.com/sahmed0/PDE-solver/actions/workflows/ci.yml/badge.svg?branch=main)
+[![CI](https://github.com/sahmed0/PINN-PDE-Solver/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/sahmed0/PINN-PDE-Solver/actions/workflows/ci.yml)
+[![Nightly gate](https://github.com/sahmed0/PINN-PDE-Solver/actions/workflows/nightly.yml/badge.svg)](https://github.com/sahmed0/PINN-PDE-Solver/actions/workflows/nightly.yml)
 
-> A physics-informed neural network that solves the 1D heat equation to **2.5 × 10⁻⁴** relative L2 error,
-> wrapped in an end-to-end Azure ML pipeline whose decision point is an **evaluation gate** – so the
-> model registry only ever contains models that earned their place.
+> A physics-informed neural network that solves the 1D heat equation to **2.48 × 10⁻⁴**
+> mean relative L2 — measured on four interior diffusivities on a 100 x 100 grid against the
+> closed-form solution — wrapped in an Azure ML pipeline whose decision point is an **evaluation
+> gate**, so the model registry only ever contains models that earned their place.
+>
+> **[Live demo](https://pinn-pde-solver.vercel.app/)** · runs entirely in your browser, no server.
 
 ![Python 3.12](https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white)
 ![JAX](https://img.shields.io/badge/JAX-grad%2Bjit-EE4C2C)
@@ -21,13 +25,32 @@
 *The trained PINN (left) reproduces the closed-form heat-equation solution (centre); the absolute error
 (right) peaks at ~4 × 10⁻⁴. The network learned the physics, not a lookup table.*
 
+### Run it
+
+```powershell
+cd python
+uv sync --group mlops
+uv run --group mlops pytest -m "not slow"                       # 46 tests
+uv run --group mlops python mlops/train_entry.py --epochs 20000 # train + log to ./mlruns
+uv run --group mlops python mlops/gate.py --model-dir outputs/<run-dir>
+```
+
+```bash
+cd frontend && pnpm install && pnpm dev
+```
+
+Full Azure runbook: [mlops/README.md](mlops/README.md).
+
 ---
 
 ## TL;DR
 
 - **A real solver.** A parametric PINN in JAX/Equinox solves the 1D heat equation across a continuous
-  range of diffusivities `α ∈ [0.01, 0.1]` – one network, infinitely many PDE instances – validated
-  against the analytical solution to **2.5 × 10⁻⁴** mean relative L2.
+  range of diffusivities `α ∈ [0.01, 0.1]` — one network, infinitely many PDE instances — validated
+  against the analytical solution to **2.48 × 10⁻⁴** mean relative L2 on the gate's four
+  interior α. Across a dense 19-point sweep of the whole range the mean is **2.97 × 10⁻⁴**,
+  worst **1.26 × 10⁻³** at α = 0.01, where the network is
+  extrapolating toward the edge of its training band.
 - **A real pipeline.** Training runs as an Azure ML command job; MLflow captures params/metrics/artifacts;
   an **evaluation gate** decides promotion; passing models land in a versioned **Model Registry**; one is
   served as a live **REST endpoint**.
@@ -71,8 +94,11 @@ Two engineering decisions did the heavy lifting (see [python/pinn/model.py](pyth
   <img src="docs/screenshots/baseline-loss_curve.png" alt="Training loss and mean relative L2 vs epoch, both decaying over 20k epochs" width="800">
 </p>
 
-*Total PDE loss (blue) and held-out mean relative L2 (red) over 20 000 epochs. The spikes are the cosine
-learning-rate restarts; the run settles below 10⁻⁶ loss / 2.5 × 10⁻⁴ relative error.*
+*Total PDE loss (blue) and mean relative L2 (red) over 20 000 epochs. The spikes are the cosine
+learning-rate restarts. The red curve is `train()`'s validation metric, averaged over
+α ∈ {0.01, 0.05, 0.1} — it includes **both** edges of the trained band, so it sits above the gate's
+interior-α figure by design: **6.95 × 10⁻⁴** here versus
+**2.48 × 10⁻⁴** on the gate's four interior α.*
 
 **Breadth (in the core, outside the Azure ML pipeline):** the same architecture also solves **Burgers' equation**
 (nonlinear, validated against a method-of-lines numerical reference since it has no closed form) and an
@@ -83,8 +109,8 @@ parameter-estimation task a classical forward solver cannot do directly.
 
 *How do you know the collocation budget is enough?* A convergence study
 ([python/pinn/convergence_study.py](python/pinn/convergence_study.py)) trains the network from a
-fixed seed across a range of collocation-point counts – each through the same production
-`train()` loop (cosine-annealed Adam) – and measures the mean relative L2 against the analytical
+fixed seed across a range of collocation-point counts – each through the same `train()` loop as
+the headline model (cosine-annealed Adam) – and measures the mean relative L2 against the analytical
 solution.
 
 <p align="center">
@@ -99,10 +125,20 @@ capacity, not collocation density. The **slope**, not the absolute level, is the
 20 000-epoch budget the whole curve sits lower.
 
 For **Burgers'**, the "exact" field is itself a numerical (method-of-lines) reference, so it carries
-its own discretisation error. A grid-refinement check (nx=512 vs nx=2048, via
-[python/scripts/burgers_refinement.py](python/scripts/burgers_refinement.py)) puts that at
-rel-L2 **4.320e-03** – meaning a meaningful share of the PINN's quoted Burgers rel-L2 is really the
-reference's own error near the shock, not the model's.
+its own discretisation error. A grid-refinement check (nx = 512 vs nx = 2048, via
+[python/scripts/burgers_refinement.py](python/scripts/burgers_refinement.py)) puts that at rel-L2
+**4.32 × 10⁻³** — about 4.1% of the PINN's
+**0.105**. The remaining error is the model's: a smooth tanh network smears the steep
+front at x = 0. Away from it (excluding |x| < 0.1) the PINN's relative L2 is
+**2.91 × 10⁻³**, and its L∞ of **1.08** — on a field with
+|u| ≤ 1 — means it misses the jump essentially completely at the worst point. This is the textbook
+PINN failure mode on advection-dominated problems.
+
+**What was not tried here:** L-BFGS polish after Adam, residual-adaptive collocation resampling near
+the front, causal or time-marching training, and a larger collocation budget (this run uses 2 000
+points and Adam only). Raissi et al. report ~1e-3 on this benchmark with a soft-constraint
+formulation and L-BFGS. The Burgers model is included as breadth — a second, nonlinear PDE through
+the same architecture — not as a competitive result.
 
 ---
 
@@ -167,8 +203,19 @@ test set defined as two honest slices ([python/mlops/test_set.py](python/mlops/t
   truly held-out regime, where the analytical solution still provides ground truth. The threshold is looser
   because extrapolation is intrinsically harder.
 
+> **What "held-out" means for a label-free method.** This PINN never trains on labelled solution
+> values — its loss is the PDE residual at collocation points. So "held-out" does not mean unseen
+> labels; it means a different evaluation set: a regular 100 x 100 grid that shares no points with the
+> uniform-random collocation set, at α values the training-time validation never used. The
+> interpolation slice is genuinely in-distribution (training samples α continuously over the band);
+> only the OOD slice is a regime training never covered. The two thresholds are separate because the
+> two claims are different.
+
 A model is promoted **only if both** clear their thresholds: in-distribution mean rel-L2 `< 1e-2` **and**
 OOD mean rel-L2 `< 5e-2`. The gate exits non-zero on failure so the terminal can branch on it.
+The thresholds were set from the measured baseline and weak results rather than from a downstream
+requirement — in a real team they would come from an SLA or a downstream tolerance and be versioned
+alongside the model.
 
 <table>
 <tr><th>✅ Baseline – PASS</th><th>❌ Weak config – FAIL</th></tr>
@@ -194,6 +241,12 @@ OOD **1.68e-01**. The log reads
 
 </td></tr>
 </table>
+
+The model shipped to the browser ([frontend/public/pinn_model.json](frontend/public/pinn_model.json))
+carries a `provenance` block with its own locally measured gate result:
+in-dist **2.48e-04**, OOD **6.09e-03**, against the same thresholds. It **is** registered v2 — the
+same checkpoint, re-measured locally against the same gate, with metrics that match the registry's
+figures above.
 
 ### 3c. The Model Registry
 
@@ -331,20 +384,13 @@ The interesting parts of a project like this are the places where the obvious ch
 
 ## 7. Running it yourself
 
-**Local (no Azure needed):**
+**Local (no Azure needed):** the commands are in [Run it](#run-it) at the top. The slow accuracy
+regression test runs nightly rather than in the fast suite. To inspect runs, metrics and artifacts
+after training:
 
 ```powershell
 cd python
-uv sync --group mlops
-uv run --group mlops pytest -m "not slow"   # 46 fast tests passing (the slow accuracy test runs nightly)
-uv run --group mlops python mlops/train_entry.py --epochs 20000   # train + log to ./mlruns
-mlflow ui                                   # inspect runs/metrics/artifacts
-```
-
-**Frontend:**
-
-```bash
-cd frontend && pnpm install && pnpm dev
+mlflow ui
 ```
 
 **Azure ML:** the full deploy/teardown runbook (env registration, job submission, registry promotion,
@@ -373,3 +419,26 @@ endpoint serving) lives in [mlops/README.md](mlops/README.md).
   than pay for another cloud round-trip, the scoring path is re-verified offline by the Docker smoke test
   (builds the inference env, rebuilds the model from the committed JSON, exercises `score.init`/`run` and the
   health route, and times requests) – the same local-first discipline the pipeline is built on.
+
+### What a production version would add
+
+This is a portfolio pipeline: the promotion **decision** and its evidence, with the surrounding
+platform deliberately out of scope. A production system would add:
+
+- **Triggering.** Training runs are submitted from a terminal. A real system triggers on a schedule,
+  on a data or code change, or on a drift signal — as an Azure ML pipeline job or a GitHub Actions
+  workflow with an OIDC federated credential.
+- **Monitoring and alerting.** No request logging, latency/error SLOs, input-distribution monitoring
+  or drift detection on the endpoint. Application Insights plus Azure ML data collection would be the
+  starting point.
+- **Safe rollout and rollback.** A single `blue` deployment at 100% traffic, referencing the model as
+  `@latest`. Production needs a pinned model version, blue/green or canary traffic splitting, and a
+  one-command rollback.
+- **Versioned data and reproducible environments.** There is no dataset here — collocation points are
+  sampled from a seed — so there is nothing to version. A data-driven model would need a registered,
+  versioned data asset and a lineage link from model to data version.
+- **Identity instead of keys.** The endpoint uses key auth. Managed identity plus Azure RBAC removes
+  the shared secret.
+- **Enforcement, not convention.** The gate blocks registration because the script is written that
+  way — anyone with `az ml model create` can bypass it. Enforcement belongs in a pipeline job with a
+  conditional step, plus RBAC that denies direct registry writes.

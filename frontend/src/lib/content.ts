@@ -56,12 +56,14 @@ export function inverseLede(nObs: number | undefined, sigma: number | undefined,
 
 export const BURGERS_LEDE =
   'A standard nonlinear benchmark (Raissi et al., 2019) with no closed-form solution. A steep front ' +
-  'forms at x = 0 from t ≈ 0.4. The PINN is validated against a method-of-lines reference ' +
+  'forms at x = 0: the profile steepens sharply after the inviscid breaking time t = 1/π ≈ 0.32 and ' +
+  'is steepest near t ≈ 0.5. The PINN is validated against a method-of-lines reference ' +
   'integrated on a 512-point grid.';
 
 export const BURGERS_CONTEXT_NOTE =
-  'Most of the error sits on the steep front at x ≈ 0, which a smooth tanh network tends to smear. ' +
-  'The reference’s own discretisation error (right) bounds how precisely this figure can be quoted.';
+  'Most of the error sits on the steep front at x ≈ 0, which a smooth tanh network smears; away from ' +
+  'it the model is more than an order of magnitude more accurate. The reference’s own discretisation ' +
+  'error (right) accounts for only a small fraction of the figure quoted here.';
 
 export const VIEW_OPTIONS: Record<TabMode, { value: ViewMode; label: string }[]> = {
   forward: [
@@ -125,7 +127,7 @@ export const ABOUT: Record<TabMode, string[]> = {
     'Hard-constraint ansatz: the output is built as u = sin(πx) + (1 − x²)·t·N, so the initial and boundary conditions hold exactly and the network only learns the interior dynamics.',
     'Inputs are normalised to roughly [−1, 1]. Without this the network collapses towards an α-averaged solution at the edges of the range.',
     'Trained in JAX/Equinox, exported as JSON weights and re-implemented as a ~30-line TypeScript forward pass, pinned to the Python reference by golden-vector parity tests at 1e-9.',
-    'The same model passes an Azure ML evaluation gate (in-distribution rel. L² < 1e-2, out-of-distribution < 5e-2) before it can enter the model registry.',
+    'This model clears the same Azure ML evaluation gate that guards the registry: in-distribution rel. L² < 1e-2 and out-of-distribution < 5e-2, both measured on held-out α slices. Its measured gate result ships inside the weights file.',
   ],
   inverse: [
     'α is a trainable scalar optimised jointly with the network: the PDE residual ties the field to α, and the noisy observations pin both down.',

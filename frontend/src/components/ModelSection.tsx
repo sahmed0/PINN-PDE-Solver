@@ -3,6 +3,7 @@ import { EM_DASH, formatInt } from '../lib/format.ts';
 import { architectureString, parameterCount } from '../lib/modelStats.ts';
 import { ANSATZ_TEX } from '../lib/content.ts';
 import { InspectorSection, KeyValue, KeyValueList } from './Inspector.tsx';
+import { Sci } from './Sci.tsx';
 import { Tex } from './Tex.tsx';
 import styles from './Inspector.module.css';
 
@@ -14,6 +15,7 @@ interface ModelSectionProps {
 }
 
 export function ModelSection({ variant, model, title = 'Model', caption }: ModelSectionProps) {
+  const provenance = variant === 'heat' && model != null && 'provenance' in model ? model.provenance : undefined;
   return (
     <InspectorSection title={title}>
       <KeyValueList>
@@ -22,6 +24,12 @@ export function ModelSection({ variant, model, title = 'Model', caption }: Model
         <KeyValue label="Activation">{model ? model.activation : EM_DASH}</KeyValue>
         <KeyValue label="Inputs">{variant === 'heat' ? 'x, t, α' : 'x, t'}</KeyValue>
         <KeyValue label="Runtime">TypeScript forward pass</KeyValue>
+        {provenance != null && (
+          <>
+            <KeyValue label="Gate (in-dist)"><Sci value={provenance.gate.mean_rel_l2} /></KeyValue>
+            <KeyValue label="Gate (OOD)"><Sci value={provenance.gate.mean_rel_l2_ood} /></KeyValue>
+          </>
+        )}
       </KeyValueList>
       <p className={styles.formulaLabel}>Hard-constraint output</p>
       <div className={styles.formula}><Tex tex={ANSATZ_TEX[variant]} display /></div>

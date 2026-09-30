@@ -10,10 +10,10 @@ than collocation density. The resulting log-log plot is saved to
 `figures/convergence.png`.
 
 This is a *reduced-budget* study: each point is trained for 2000 epochs, whereas
-the production headline model runs for 20000. The finding here is the *slope*
+the headline model runs for 20000. The finding here is the *slope*
 (how error scales with collocation density), not the absolute error level, which
 would be lower at the full budget. Each model is trained through the exact same
-`train()` production loop (cosine-annealed Adam), so the trend reflects how the
+`train()` loop as the headline model (cosine-annealed Adam), so the trend reflects how the
 shipped model is actually optimised.
 
 Run from the `python/` directory:
@@ -35,7 +35,7 @@ from pinn.train import train
 def run_study(collocation_counts=(100, 250, 500, 1000, 2000, 4000), epochs=2000, lr=1e-3, seed=42):
     """Train one model per collocation count and return (counts, mean rel L2).
 
-    Uses the production `train()` loop (cosine-annealed Adam) so the measured
+    Uses the same `train()` loop as the headline model (cosine-annealed Adam) so the measured
     trend reflects the real optimiser, not a stand-in. Validation printing is
     disabled per step; final accuracy is measured once via `evaluate`.
     """

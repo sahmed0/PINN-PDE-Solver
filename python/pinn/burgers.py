@@ -7,8 +7,9 @@ solver and not a one-off fit to the heat equation.
     u(-1, t) = u(1, t) = 0                         (Dirichlet BCs)
     nu = 0.01 / pi                                 (Raissi et al. 2019)
 
-This problem is nonlinear (the u u_x advection term) and develops a near-shock
-around t ~ 0.7 at this small viscosity, where classical solvers need fine grids.
+This problem is nonlinear (the u u_x advection term): at this small viscosity the
+profile steepens sharply after the inviscid breaking time t = 1/pi ≈ 0.32, reaching
+its steepest gradient near t ≈ 0.5, where classical solvers need fine grids.
 Unlike the heat equation it has no simple closed form under these Dirichlet BCs,
 so the reference solution comes from a method-of-lines numerical integration
 (see burgers_reference) rather than an analytical formula.
@@ -27,12 +28,13 @@ from jax.experimental.ode import odeint
 from pinn.forward import burgers_ansatz, normalised_mlp
 from pinn.json_forward import forward_from_payload
 
-# Raissi viscosity; the near-shock forms around t ~ 0.7 at this value.
+# Raissi viscosity; at this viscosity the profile steepens sharply after t = 1/pi ≈ 0.32
+# and is steepest near t ≈ 0.5.
 NU = 0.01 / jnp.pi
 
 # Fixed [x, t] rows whose float64 reference outputs are embedded in every export
 # as "test_vectors" (see json_forward and the parity tests). They cover t=0,
-# x=+/-1, the near-shock band t~0.7-0.85, and interior points.
+# x=+/-1, the steep-front band t ≈ 0.7–0.85, well past the breaking time, and interior points.
 BURGERS_PARITY_INPUTS = [
     [-0.4, 0.0],
     [0.8, 0.0],
