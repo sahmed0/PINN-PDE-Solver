@@ -69,8 +69,8 @@ test('inverse: result JSON matches the display schema and honest CRLB ratio', ()
     expect(typeof obs.u).toBe('number');
   }
 
-  // The measured spread sits at ~1.6x the Cramer-Rao floor; pin it to [1, 3] so the
-  // README's honest "1.6x the floor" claim can't silently drift.
+  // The measured spread sits at ~1.7x the Cramer-Rao floor; pin it to [1, 3] so the
+  // README's "close to the information floor" claim can't silently drift.
   const ratio = (result.alpha_std as number) / (result.crlb_std as number);
   expect(ratio).toBeGreaterThanOrEqual(1);
   expect(ratio).toBeLessThanOrEqual(3);

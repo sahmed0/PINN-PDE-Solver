@@ -1,6 +1,6 @@
 import { expect, test } from 'vitest';
 
-import { formatFixed, formatInt, formatMs, formatPercent, formatRatio, formatSciText, toSciParts } from './format';
+import { formatFixed, formatInt, formatMs, formatPercent, formatRatio, formatRatioWithSe, formatSciText, toSciParts } from './format';
 
 test('toSciParts', () => {
   expect(toSciParts(2.4812e-4)).toEqual({ mantissa: '2.48', exponent: -4 });
@@ -36,5 +36,13 @@ test('formatPercent', () => {
 });
 
 test('formatRatio', () => {
-  expect(formatRatio(0.0003971883128936184 / 0.00024365526041947305)).toBe('1.63×');
+  // Formatting only: the real spread / floor values live in inverse_model.json.
+  expect(formatRatio(2.3456)).toBe('2.35×');
+  expect(formatRatio(undefined)).toBe('—');
+});
+
+test('formatRatioWithSe', () => {
+  expect(formatRatioWithSe(2.3456, 0.6271)).toBe('2.35× ± 0.63');
+  expect(formatRatioWithSe(2.3456, undefined)).toBe('2.35×');
+  expect(formatRatioWithSe(undefined, 0.44)).toBe('—');
 });
