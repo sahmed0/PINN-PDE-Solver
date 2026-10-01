@@ -103,7 +103,11 @@ interior-α figure by design: **6.95 × 10⁻⁴** here versus
 **Breadth (in the core, outside the Azure ML pipeline):** the same architecture also solves **Burgers' equation**
 (nonlinear, validated against a method-of-lines numerical reference since it has no closed form) and an
 **inverse problem** – recovering an unknown diffusivity `α` from sparse, noisy observations, a
-parameter-estimation task a classical forward solver cannot do directly.
+parameter-estimation task a classical forward solver cannot do directly. Over 8 noise realisations the
+recovered `α` has a spread of 4.25 × 10⁻⁴ against a Cramér–Rao floor of 2.44 × 10⁻⁴. With 8 noise
+realisations the standard error on an estimated standard deviation is about 27%, so the ratio is
+1.74 ± 0.47 — the estimator sits close to the information floor, but "close" is all this many seeds can
+support.
 
 ### How accuracy scales
 

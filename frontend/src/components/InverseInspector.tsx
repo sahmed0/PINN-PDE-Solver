@@ -1,6 +1,6 @@
 import type { InverseResult, PINNModel } from '../lib/inference.ts';
 import { ALPHA_HAT } from '../lib/content.ts';
-import { EM_DASH, formatFixed, formatInt, formatPercent, formatRatio } from '../lib/format.ts';
+import { EM_DASH, formatFixed, formatInt, formatPercent, formatRatioWithSe } from '../lib/format.ts';
 import { Sci } from './Sci.tsx';
 import { InspectorSection, KeyValue, KeyValueList } from './Inspector.tsx';
 import { ModelSection } from './ModelSection.tsx';
@@ -17,9 +17,10 @@ interface InverseInspectorProps {
 
 export function InverseInspector({ inverse, model, showObs, setShowObs }: InverseInspectorProps) {
   const ratio =
-    inverse?.alpha_std != null && inverse.crlb_std != null
+    inverse?.spread_to_crlb ??
+    (inverse?.alpha_std != null && inverse.crlb_std != null
       ? inverse.alpha_std / inverse.crlb_std
-      : undefined;
+      : undefined);
 
   return (
     <>
@@ -50,10 +51,12 @@ export function InverseInspector({ inverse, model, showObs, setShowObs }: Invers
           <KeyValue label={`Recovered ${ALPHA_HAT}`}>{inverse ? formatFixed(inverse.alpha_est, 5) : EM_DASH}</KeyValue>
           <KeyValue label="Spread (1σ)"><Sci value={inverse?.alpha_std} /></KeyValue>
           <KeyValue label="Cramér–Rao floor (1σ)"><Sci value={inverse?.crlb_std} /></KeyValue>
-          <KeyValue label="Spread / floor">{formatRatio(ratio)}</KeyValue>
+          <KeyValue label="Spread / floor">{formatRatioWithSe(ratio, inverse?.spread_to_crlb_se)}</KeyValue>
         </KeyValueList>
         <p className={inspector.caption}>
           The floor is the smallest standard deviation any unbiased estimator can reach from this data. A ratio of 1× would be statistically optimal.
+          {inverse?.spread_to_crlb_se != null &&
+            ` The ± is the sampling uncertainty of a standard deviation estimated from ${inverse.n_seeds ?? EM_DASH} noise realisations.`}
         </p>
       </InspectorSection>
 

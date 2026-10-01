@@ -134,6 +134,10 @@ export interface InverseResult {
   // against (the best std physically attainable from this noisy data).
   alpha_std?: number;
   crlb_std?: number;
+  // alpha_std / crlb_std and its sampling standard error (the std is estimated
+  // from only n_seeds draws).
+  spread_to_crlb?: number;
+  spread_to_crlb_se?: number;
   n_obs?: number;
   noise_sigma?: number;
   n_seeds?: number;

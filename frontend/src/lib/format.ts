@@ -48,3 +48,9 @@ export function formatRatio(value: number | null | undefined): string {
   if (value == null || !Number.isFinite(value)) return EM_DASH;
   return `${value.toFixed(2)}×`;
 }
+
+export function formatRatioWithSe(value: number | null | undefined, se: number | null | undefined): string {
+  if (value == null || !Number.isFinite(value)) return EM_DASH;
+  if (se == null || !Number.isFinite(se)) return formatRatio(value);
+  return `${value.toFixed(2)}× ± ${se.toFixed(2)}`;
+}

@@ -22,8 +22,8 @@ unbiased estimator could achieve. The pieces below are designed to reach it:
   * alpha gets its own, faster optimiser (it is one tiny-magnitude scalar with a
     weak gradient, so it needs a larger step than the network weights);
   * an L-BFGS polish after Adam seats alpha exactly at the data optimum, pulling
-    the spread of estimates down to within ~1.6x of the CRLB floor
-    (measured: std 3.97e-4 vs bound 2.44e-4).
+    the spread of estimates down to within ~1.7x of the CRLB floor
+    (measured over 8 seeds: std 4.25e-4 vs bound 2.44e-4, ratio 1.74 +/- 0.47).
 
 InversePINN is deliberately separate from ParametricPINN: its MLP takes only
 [x, t] and it carries its own alpha leaf, so none of the forward training code is
@@ -411,17 +411,28 @@ def evaluate_inverse_uncertainty(
             print(f"seed {s}: alpha_est = {est:.5f}")
 
     estimates = np.asarray(estimates)
-    # CRLB on a representative observation design (seed 0's actual points).
+    # CRLB on seed 0's actual observation design. Each seed draws its own points, so the
+    # bound varies slightly across seeds; seed 0's design is representative and using one
+    # fixed design keeps the quoted floor tied to a specific, reproducible experiment.
     _, k_obs, _ = _split_keys(jr.PRNGKey(0))
     X_obs, _ = generate_observations(k_obs, alpha_true, n_obs=n_obs, noise_sigma=noise_sigma)
     crlb = crlb_std(X_obs, alpha_true, noise_sigma)
+
+    # ddof=1: the 8 seeds are a sample of the estimator's noise distribution, not the
+    # whole population.
+    std = float(estimates.std(ddof=1))
+    ratio = float(std / crlb)
 
     return {
         "alpha_true": float(alpha_true),
         "estimates": estimates.tolist(),
         "mean": float(estimates.mean()),
-        "std": float(estimates.std()),
+        "std": std,
         "crlb_std": float(crlb),
+        "spread_to_crlb": ratio,
+        # Standard error of a sample std with n draws is approximately std / sqrt(2(n-1)),
+        # so the ratio inherits the same relative uncertainty.
+        "spread_to_crlb_se": float(ratio / np.sqrt(2.0 * (n_seeds - 1))),
         "n_obs": int(n_obs),
         "noise_sigma": float(noise_sigma),
         "n_seeds": int(n_seeds),
@@ -458,6 +469,8 @@ def export_inverse_to_json(
         payload["alpha_est"] = float(stats["mean"])
         payload["alpha_std"] = float(stats["std"])
         payload["crlb_std"] = float(stats["crlb_std"])
+        payload["spread_to_crlb"] = float(stats["spread_to_crlb"])
+        payload["spread_to_crlb_se"] = float(stats["spread_to_crlb_se"])
         payload["n_obs"] = int(stats["n_obs"])
         payload["noise_sigma"] = float(stats["noise_sigma"])
         payload["n_seeds"] = int(stats["n_seeds"])
@@ -505,7 +518,10 @@ def run_inverse_demo(
         f"| {std / alpha_true * 100:.2f}% (spread)"
     )
     print(f"    Cramer-Rao floor  : {crlb:.5f}  ({crlb / alpha_true * 100:.2f}% of true)")
-    print(f"    saturation        : spread / CRLB = {std / crlb:.2f}x (1.0x = information-limited)")
+    print(
+        f"    saturation        : spread / CRLB = {stats['spread_to_crlb']:.2f}x "
+        f"+/- {stats['spread_to_crlb_se']:.2f} (1.0x = information-limited)"
+    )
 
     # Train one representative model on `seed` for the exported field/scatter.
     key = jr.PRNGKey(seed)
