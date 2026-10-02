@@ -10,11 +10,15 @@ from pinn.forward import heat_ansatz, normalised_mlp
 #   t     in [0,  1]
 #   alpha in [0.01, 0.1]
 #
-# Raw alpha is a narrow band of small numbers, which a tanh-MLP resolves poorly:
-# the input has tiny variance so the gradient signal w.r.t. alpha is weak and the
-# network collapses toward an alpha-averaged solution (accurate in the middle of
-# the range, wrong at the edges). We therefore normalise every input to roughly
-# [-1, 1] before the network sees it, via  norm = (raw - center) / scale.
+# alpha spans a band two orders of magnitude narrower than x and t, so un-normalised
+# it enters the first layer at a far smaller scale than the other inputs. Every input
+# is therefore normalised to roughly [-1, 1] via  norm = (raw - center) / scale.
+# Measured (scripts/ablate_normalisation.py, identical seed, init and collocation
+# points, 2000 epochs): mean rel-L2 6.83e-3 normalised vs 1.45e-2 raw (2.1x), with the
+# raw model 1.3-3.7x worse at every alpha tested. The raw model does NOT collapse toward
+# an alpha-averaged solution: it reproduces 96.4% of the analytic alpha-sensitivity
+# spread against 94.7% for the normalised model. Normalisation buys accuracy, not the
+# ability to resolve alpha.
 INPUT_CENTER = (0.0, 0.5, 0.055)
 INPUT_SCALE = (1.0, 0.5, 0.045)
 
@@ -34,13 +38,23 @@ class ParametricPINN(eqx.Module):
     The raw inputs are normalised to ~[-1, 1] before the MLP, and a hard-constraint
     ansatz bakes the initial and boundary conditions into the output exactly so the
     network only has to learn the interior dynamics (see __call__).
+
+    `input_center` / `input_scale` are exposed so the normalisation ablation
+    (`scripts/ablate_normalisation.py`) can build an otherwise-identical raw-input model.
     """
 
     mlp: eqx.nn.MLP
     input_center: tuple = eqx.field(static=True)
     input_scale: tuple = eqx.field(static=True)
 
-    def __init__(self, key: jr.PRNGKey, width_size: int = 32, depth: int = 3):
+    def __init__(
+        self,
+        key: jr.PRNGKey,
+        width_size: int = 32,
+        depth: int = 3,
+        input_center=INPUT_CENTER,
+        input_scale=INPUT_SCALE,
+    ):
         self.mlp = eqx.nn.MLP(
             in_size=3,
             out_size=1,
@@ -49,8 +63,8 @@ class ParametricPINN(eqx.Module):
             activation=jax.nn.tanh,
             key=key,
         )
-        self.input_center = INPUT_CENTER
-        self.input_scale = INPUT_SCALE
+        self.input_center = tuple(input_center)
+        self.input_scale = tuple(input_scale)
 
     def __call__(self, x: jnp.ndarray) -> jnp.ndarray:
         """Forward pass of the PINN.
@@ -58,7 +72,7 @@ class ParametricPINN(eqx.Module):
         Two transforms wrap the raw MLP:
 
         1. Input normalisation: raw [x, t, alpha] -> ~[-1, 1] before the network,
-           which is essential for the network to resolve the small-magnitude alpha.
+           which roughly halves the error at a fixed training budget (see above).
 
         2. Hard-constraint ansatz, which makes the IC and BCs exact by construction:
 

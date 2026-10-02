@@ -84,9 +84,24 @@ Two engineering decisions did the heavy lifting (see [python/pinn/model.py](pyth
   `u = sin(π x) + (1 − x²) · t · N(x, t, α)`. At `t = 0` this collapses to `sin(π x)`; at `x = ±1` the
   `(1 − x²)` factor kills it. The IC and BCs are therefore **exact by construction**, and the network `N`
   only has to learn the interior dynamics.
-- **Input normalisation.** `α` lives in a narrow band of small numbers; feeding it raw gives the network a
-  weak, low-variance gradient signal and it collapses toward an `α`-averaged solution. Normalising every
-  input to ~`[-1, 1]` first is what lets it resolve the `α`-dependence at the edges of the range.
+- **Input normalisation.** `α` spans `[0.01, 0.1]`, two orders of magnitude narrower than `x` and `t`,
+  so every input is normalised to ~`[-1, 1]` before the network sees it. Measured by ablation (identical
+  seed, initialisation and collocation points, 2 000 epochs,
+  [python/scripts/ablate_normalisation.py](python/scripts/ablate_normalisation.py)): 6.83 × 10⁻³ vs
+  1.45 × 10⁻² mean relative L2, so the raw-input model has about **2.1×** the error, and is 1.3–3.7× worse
+  at every `α` tested. The ablation also **ruled out** the explanation this README used to give: the
+  raw-input model does not collapse toward an `α`-averaged solution. It reproduces 96.4% of the true
+  `α`-sensitivity of the field, against 94.7% for the normalised model. Normalisation buys accuracy
+  and faster early training (the raw arm's loss stalls near 2 × 10⁻² for its first ~500 epochs), not the
+  ability to resolve `α`. This is a single seed at a reduced budget.
+
+<p align="center">
+  <img src="python/figures/normalisation_ablation.png" alt="Relative L2 error against alpha and alpha-sensitivity spread, with and without input normalisation" width="800">
+</p>
+
+*Left: relative L2 vs `α` for both arms. Right: how much of the true `α`-sensitivity of the field each
+arm reproduces. Same seed, same initialisation, same collocation points, 2 000 epochs each. The only
+difference is the input normalisation.*
 
 **Convergence:**
 

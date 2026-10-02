@@ -125,7 +125,7 @@ export const ENGINE_LABEL = 'Runs in your browser · no server';
 export const ABOUT: Record<TabMode, string[]> = {
   forward: [
     'Hard-constraint ansatz: the output is built as u = sin(πx) + (1 − x²)·t·N, so the initial and boundary conditions hold exactly and the network only learns the interior dynamics.',
-    'Inputs are normalised to roughly [−1, 1]. Without this the network collapses towards an α-averaged solution at the edges of the range.',
+    'Inputs are normalised to roughly [−1, 1]. An ablation with the same seed and collocation points shows this roughly halves the error: the un-normalised network still resolves α, but ends about 2× less accurate.',
     'Trained in JAX/Equinox, exported as JSON weights and re-implemented as a ~30-line TypeScript forward pass, pinned to the Python reference by golden-vector parity tests at 1e-9.',
     'This model clears the same Azure ML evaluation gate that guards the registry: in-distribution rel. L² < 1e-2 and out-of-distribution < 5e-2, both measured on held-out α slices. Its measured gate result ships inside the weights file.',
   ],
