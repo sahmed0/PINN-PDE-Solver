@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import createPlotlyComponentImport from 'react-plotly.js/factory';
-import Plotly from 'plotly.js-dist-min';
+import Plotly from '../lib/plotlyCore.ts';
 import type { Config, Data, Layout } from 'plotly.js';
 
 import { PLOT_THEME, type HeatmapTrace, type PlotState } from '../lib/plotting.ts';
@@ -110,3 +110,5 @@ export function HeatmapPanel({ trace, plot, observations }: HeatmapPanelProps) {
     />
   );
 }
+
+export default HeatmapPanel;

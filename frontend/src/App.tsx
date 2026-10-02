@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, type ReactNode } from 'react';
+import { useState, useEffect, useCallback, lazy, Suspense, type ReactNode } from 'react';
 import {
   loadModel,
   loadInverseResult,
@@ -38,7 +38,6 @@ import { AppBar } from './components/AppBar.tsx';
 import { PageHeader } from './components/PageHeader.tsx';
 import { StatRow, StatTile, ContextNote } from './components/StatRow.tsx';
 import { PlotCard } from './components/PlotCard.tsx';
-import { HeatmapPanel } from './components/HeatmapPanel.tsx';
 import { LoadingPanel, LoadErrorPanel } from './components/StatusPanel.tsx';
 import { Inspector } from './components/Inspector.tsx';
 import { ForwardInspector } from './components/ForwardInspector.tsx';
@@ -46,6 +45,9 @@ import { InverseInspector } from './components/InverseInspector.tsx';
 import { BurgersInspector } from './components/BurgersInspector.tsx';
 import { useHashTab } from './lib/useHashTab.ts';
 import styles from './App.module.css';
+
+// Plotly is the bulk of the bundle, so the plot loads as its own chunk after the shell renders.
+const HeatmapPanel = lazy(() => import('./components/HeatmapPanel.tsx'));
 
 // Resolution of our grid
 const NX = 50;
@@ -266,11 +268,13 @@ function App() {
     plotBody = <LoadingPanel label="Running first forward pass…" />;
   } else {
     plotBody = (
-      <HeatmapPanel
-        trace={trace}
-        plot={activePlot}
-        observations={tab === 'inverse' && showObs && inverse ? inverse.observations : undefined}
-      />
+      <Suspense fallback={<LoadingPanel label="Loading plot…" />}>
+        <HeatmapPanel
+          trace={trace}
+          plot={activePlot}
+          observations={tab === 'inverse' && showObs && inverse ? inverse.observations : undefined}
+        />
+      </Suspense>
     );
   }
 

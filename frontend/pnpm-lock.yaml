@@ -17,9 +17,9 @@ importers:
       katex:
         specifier: ^0.18.7
         version: 0.18.7
-      plotly.js-dist-min:
-        specifier: ^3.4.0
-        version: 3.4.0
+      plotly.js:
+        specifier: ^3.6.0
+        version: 3.6.0(mapbox-gl@1.13.3)(supports-color@7.2.0)
       react:
         specifier: ^19.2.4
         version: 19.2.4
@@ -1550,9 +1550,6 @@ packages:
   picomatch@4.0.4:
     resolution: {integrity: sha512-QP88BAKvMam/3NxH6vj2o21R6MjxZUAd6nlwAS/pnGvN9IVLocLHxGYIzFhg6fUQ+5th6P4dv4eW9jX3DSIj7A==}
     engines: {node: '>=12'}
-
-  plotly.js-dist-min@3.4.0:
-    resolution: {integrity: sha512-eo7xh7oyE9fFoE/wintgmvfOjvTKwCb3wRf9ShQv90du4n+EVkOY7w5qEkmUS9SSkHRnAw8sk/0QI7wEc5U+8Q==}
 
   plotly.js@3.6.0:
     resolution: {integrity: sha512-Fu5IaetcuxaeQPULk4wfIik0MnvIsEb5ynOsPAMfhAnjkPOEDFG7eSb/3ZZq1DW5MwYvZFXaTFHpal4U1Q5Yig==}
@@ -3583,8 +3580,6 @@ snapshots:
   picocolors@1.1.1: {}
 
   picomatch@4.0.4: {}
-
-  plotly.js-dist-min@3.4.0: {}
 
   plotly.js@3.6.0(mapbox-gl@1.13.3)(supports-color@7.2.0):
     dependencies:
