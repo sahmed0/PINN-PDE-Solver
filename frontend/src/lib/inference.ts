@@ -158,13 +158,15 @@ export async function loadInverseResult(url = '/inverse_model.json'): Promise<In
 }
 
 // 1. Grid Generation (mapped to the Python training domains).
+// Float64Array throughout: the exported weights are float64 and the parity tests pin this forward
+// pass to a float64 NumPy reference at 1e-9, so nothing on this path may narrow to float32.
 export function generateGrid(
   nx: number,
   nt: number,
   alpha: number
-): { inputs: Float32Array; numPoints: number; xVals: number[]; tVals: number[] } {
+): { inputs: Float64Array; numPoints: number; xVals: number[]; tVals: number[] } {
   const numPoints = nx * nt;
-  const inputs = new Float32Array(numPoints * 3);
+  const inputs = new Float64Array(numPoints * 3);
 
   const xVals: number[] = [];
   const tVals: number[] = [];
@@ -186,8 +188,8 @@ export function generateGrid(
 }
 
 // 2. Run inference over the whole grid -> flat array of u values.
-export function runInference(model: PINNModel, inputs: Float32Array, numPoints: number): Float32Array {
-  const out = new Float32Array(numPoints);
+export function runInference(model: PINNModel, inputs: Float64Array, numPoints: number): Float64Array {
+  const out = new Float64Array(numPoints);
   const vec = [0, 0, 0];
   for (let p = 0; p < numPoints; p++) {
     vec[0] = inputs[p * 3];
@@ -199,7 +201,7 @@ export function runInference(model: PINNModel, inputs: Float32Array, numPoints: 
 }
 
 // 3. Reshape the flat output into a [nt][nx] grid for Plotly.
-export function reshapeForPlotly(flatOutput: Float32Array, nx: number, nt: number): number[][] {
+export function reshapeForPlotly(flatOutput: Float64Array, nx: number, nt: number): number[][] {
   const zData: number[][] = [];
   let idx = 0;
   for (let i = 0; i < nt; i++) {
