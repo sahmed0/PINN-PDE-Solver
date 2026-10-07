@@ -22,13 +22,18 @@ Request shapes — ``run`` accepts either:
     {"health": true}                            -> {"status": "ok", ...}
 
 Serving-time input policy (see ``config``): ``alpha`` must lie inside
-``ALPHA_SERVING_RANGE`` and a grid must satisfy ``nx*nt <= MAX_GRID_POINTS``,
-otherwise an error naming the limit is returned. When any requested ``alpha`` is
+``ALPHA_SERVING_RANGE``, a points request may carry at most ``MAX_POINT_ROWS`` rows
+and a grid must satisfy ``nx*nt <= MAX_GRID_POINTS``, otherwise an error naming the
+limit is returned. When any requested ``alpha`` is
 outside the trained ``ALPHA_RANGE`` the (successful) response also carries
 ``"ood": true`` and an ``"ood_note"``; in-distribution responses omit both keys.
 The ``health`` echo works before and after ``init()``.
 
-Malformed input returns ``{"error": "<message>"}`` rather than raising.
+Malformed or out-of-policy input returns an error rather than raising. Inside the Azure
+inference image this is an ``AMLResponse`` carrying an HTTP status (400 for a bad or
+out-of-policy request, 413 for one above the size caps, 503 before ``init()`` has run);
+where that package is absent — the offline test environment — the same
+``{"error": "<message>"}`` body is returned directly.
 """
 
 import json
@@ -46,6 +51,11 @@ import jax.numpy as jnp
 from mlops import config, serialization
 from pinn import analytical
 
+try:  # Present in the Azure inference image; absent in the offline dev/test env.
+    from azureml_inference_server_http.api.aml_response import AMLResponse
+except ImportError:
+    AMLResponse = None
+
 # Populated by init(); reused across requests.
 _MODEL = None
 
@@ -60,6 +70,21 @@ _OOD_NOTE = (
     f"alpha outside trained range [{_ALPHA_TRAIN_LO}, {_ALPHA_TRAIN_HI}]; "
     "accuracy verified only to gate OOD thresholds"
 )
+
+
+def _error(message, status=400):
+    """Return an error payload, with an HTTP status when the Azure response type is available.
+
+    The Azure scoring contract lets `run()` return either a JSON-serialisable object (status 200)
+    or an AMLResponse carrying an explicit status. Offline tests import this module without the
+    inference server package, where AMLResponse is None and the plain dict is returned — so the
+    dict shape stays the contract the tests assert on.
+    """
+    body = {"error": message}
+    if AMLResponse is None:
+        return body
+    # json_str=True makes AMLResponse json.dumps the body itself, so pass the dict.
+    return AMLResponse(body, status, json_str=True)
 
 
 def _is_ood(alphas):
@@ -127,21 +152,21 @@ def _validate_points(rows):
 def _predict_grid(spec):
     """Build a full (nt, nx) field for one alpha. Returns a response dict or an error."""
     if not isinstance(spec, dict) or "alpha" not in spec:
-        return {"error": "'grid' must be an object with at least 'alpha'."}
+        return _error("'grid' must be an object with at least 'alpha'.", 400)
     try:
         alpha = float(spec["alpha"])
         nx = int(spec.get("nx", config.TEST_GRID_NX))
         nt = int(spec.get("nt", config.TEST_GRID_NT))
     except (TypeError, ValueError):
-        return {"error": "'grid' alpha/nx/nt must be numbers."}
+        return _error("'grid' alpha/nx/nt must be numbers.", 400)
     if not (_ALPHA_LO <= alpha <= _ALPHA_HI):
-        return {"error": f"alpha={alpha} outside serving range [{_ALPHA_LO}, {_ALPHA_HI}]."}
+        return _error(f"alpha={alpha} outside serving range [{_ALPHA_LO}, {_ALPHA_HI}].", 400)
     if nx < 2 or nt < 2:
-        return {"error": "nx and nt must each be >= 2."}
+        return _error("nx and nt must each be >= 2.", 400)
     if nx * nt > config.MAX_GRID_POINTS:
-        return {
-            "error": f"grid nx*nt={nx * nt} exceeds the cap of {config.MAX_GRID_POINTS} points."
-        }
+        return _error(
+            f"grid nx*nt={nx * nt} exceeds the cap of {config.MAX_GRID_POINTS} points.", 413
+        )
 
     u_pred, _u_ref = analytical.predict_on_grid(_MODEL, nx, nt, alpha)
     x_axis = jnp.linspace(_X_LO, _X_HI, nx)
@@ -162,24 +187,29 @@ def run(raw_data):
     try:
         data = json.loads(raw_data) if isinstance(raw_data, (str, bytes, bytearray)) else raw_data
     except (ValueError, TypeError) as exc:
-        return {"error": f"Could not parse request JSON: {exc}"}
+        return _error(f"Could not parse request JSON: {exc}", 400)
 
     if not isinstance(data, dict):
-        return {"error": "Request body must be a JSON object."}
+        return _error("Request body must be a JSON object.", 400)
 
     # Health echo — answerable before init(), so it precedes the _MODEL guard.
     if "health" in data:
         return {"status": "ok", "model_loaded": _MODEL is not None, "format": "tanh-mlp-heat-v2"}
 
     if _MODEL is None:
-        return {"error": "Model not initialised; init() did not run."}
+        return _error("Model not initialised; init() did not run.", 503)
 
     if "inputs" in data:
-        err = _validate_points(data["inputs"])
+        rows = data["inputs"]
+        if isinstance(rows, list) and len(rows) > config.MAX_POINT_ROWS:
+            return _error(
+                f"'inputs' has {len(rows)} rows, above the cap of {config.MAX_POINT_ROWS}.", 413
+            )
+        err = _validate_points(rows)
         if err is not None:
-            return {"error": err}
-        resp = {"predictions": _predict_points(data["inputs"])}
-        if _is_ood([row[2] for row in data["inputs"]]):
+            return _error(err, 400)
+        resp = {"predictions": _predict_points(rows)}
+        if _is_ood([row[2] for row in rows]):
             resp["ood"] = True
             resp["ood_note"] = _OOD_NOTE
         return resp
@@ -187,4 +217,4 @@ def run(raw_data):
     if "grid" in data:
         return _predict_grid(data["grid"])
 
-    return {"error": "Request must contain either 'inputs' or 'grid'."}
+    return _error("Request must contain either 'inputs' or 'grid'.", 400)

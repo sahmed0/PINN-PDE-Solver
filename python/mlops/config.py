@@ -37,6 +37,8 @@ T_RANGE = (0.0, 1.0)
 
 # --- Serving-time input policy (see score.py) -----------------------------
 MAX_GRID_POINTS = 250_000  # nx*nt cap: bounds memory on a DS2_v2
+MAX_POINT_ROWS = 50_000  # points-request cap; the binding constraint is request payload size
+#                          (~1.5 MB of JSON at this many rows), not inference memory.
 ALPHA_SERVING_RANGE = (0.005, 0.15)  # reject outside; trained range + gated-OOD margin
 
 # --- MLflow logging cadence -----------------------------------------------

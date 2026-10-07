@@ -235,6 +235,11 @@ request shapes:
 {"grid": {"alpha": 0.05, "nx": 100, "nt": 100}}
 ```
 
+Errors come back as `{"error": "<message>"}` with a real HTTP status, not a 200: **400** for a
+malformed or out-of-policy request (bad JSON, wrong shape, `x`/`t` outside the domain, `α` outside
+`ALPHA_SERVING_RANGE`), **413** for one above the size caps (`MAX_POINT_ROWS` = 50 000 rows,
+`MAX_GRID_POINTS` = 250 000 grid points), and **503** if `init()` has not loaded the model.
+
 **Source-packaging note:** the registered `.eqx` artefact carries **no code**, but
 `eqx.tree_deserialise_leaves` rebuilds the skeleton from the live `ParametricPINN` class.
 So the deployment sets `code: ../python` (uploads `pinn/` + `mlops/`) and

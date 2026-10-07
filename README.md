@@ -293,8 +293,10 @@ The registered model is served as a managed online REST endpoint, using a **dedi
 scoring script ([python/mlops/score.py](python/mlops/score.py)) accepts both a point list
 `{"inputs": [[x,t,α], ...]}` and a grid request `{"grid": {"alpha", "nx", "nt"}}`. It enforces a
 serving input policy: `α` is rejected outside the band `[0.005, 0.15]`, a grid is capped at
-`nx*nt ≤ 250_000` points, any `α` outside the trained `[0.01, 0.1]` range is flagged `"ood": true`
-in the response, and a `{"health": ...}` request returns a status echo.
+`nx*nt ≤ 250_000` points and a point list at 50 000 rows, any `α` outside the trained `[0.01, 0.1]`
+range is flagged `"ood": true` in the response, and a `{"health": ...}` request returns a status echo.
+Validation failures return 4xx (400 for a malformed or out-of-policy request, 413 for one that is too
+large), not a 200 with an error body.
 
 <p align="center">
   <img src="docs/screenshots/azure-live-endpoint-overview.png" alt="Deployed endpoint details page" width="800">
@@ -432,8 +434,8 @@ endpoint serving) lives in [mlops/README.md](mlops/README.md).
   pass (to 1e-9) and the JAX scoring endpoint (to 1e-4), so a refactor on either side that changes the maths
   fails the build rather than silently drifting.
 - **The scoring endpoint is input-bounded**, not a raw model call: it rejects `α` outside `[0.005, 0.15]`, caps
-  grid requests at `nx*nt ≤ 250_000`, flags out-of-training-range `α` in the response, and answers a health
-  echo (see §3d).
+  grid requests at `nx*nt ≤ 250_000` and point lists at 50 000 rows, returns 4xx for requests it rejects,
+  flags out-of-training-range `α` in the response, and answers a health echo (see §3d).
 - **Azure has not been re-provisioned since the code was packaged as an installable `pinn` package.** Rather
   than pay for another cloud round-trip, the scoring path is re-verified offline by the Docker smoke test
   (builds the inference env, rebuilds the model from the committed JSON, exercises `score.init`/`run` and the
