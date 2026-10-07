@@ -13,7 +13,7 @@ import math
 
 import jax.random as jr
 
-from mlops import score, serialization
+from mlops import config, score, serialization
 from pinn.model import ParametricPINN
 
 
@@ -132,3 +132,62 @@ def test_health_echo_before_and_after_init(tmp_path, monkeypatch):
     after = score.run(json.dumps({"health": True}))
     assert after["status"] == "ok"
     assert after["model_loaded"] is True
+
+
+# --- HTTP status codes -------------------------------------------------------------
+# Offline, AMLResponse is absent and _error returns the plain dict asserted on above.
+# These tests swap in a stand-in with the same constructor to check the status each
+# error path would carry inside the Azure inference image.
+
+
+class _FakeAMLResponse:
+    def __init__(self, body, status_code, json_str=False):
+        self.body = body
+        self.status_code = status_code
+
+
+def test_malformed_json_returns_400(monkeypatch):
+    monkeypatch.setattr(score, "AMLResponse", _FakeAMLResponse)
+    resp = score.run("not json {")
+    assert isinstance(resp, _FakeAMLResponse)
+    assert resp.status_code == 400
+
+
+def test_too_many_point_rows_returns_413(tmp_path, monkeypatch):
+    _init_with_tiny_model(tmp_path, monkeypatch)
+    monkeypatch.setattr(score, "AMLResponse", _FakeAMLResponse)
+    # The cap is checked on length before any row is validated or evaluated.
+    rows = [[0.5, 0.5, 0.05]] * (config.MAX_POINT_ROWS + 1)
+    resp = score.run({"inputs": rows})
+    assert resp.status_code == 413
+    assert "cap" in resp.body["error"]
+
+
+def test_oversized_grid_returns_413(tmp_path, monkeypatch):
+    _init_with_tiny_model(tmp_path, monkeypatch)
+    monkeypatch.setattr(score, "AMLResponse", _FakeAMLResponse)
+    resp = score.run(json.dumps({"grid": {"alpha": 0.05, "nx": 100000, "nt": 100000}}))
+    assert resp.status_code == 413
+
+
+def test_alpha_outside_serving_range_returns_400(tmp_path, monkeypatch):
+    _init_with_tiny_model(tmp_path, monkeypatch)
+    monkeypatch.setattr(score, "AMLResponse", _FakeAMLResponse)
+    lo, _hi = config.ALPHA_SERVING_RANGE
+    assert score.run({"inputs": [[0.5, 0.5, lo / 2]]}).status_code == 400
+    assert score.run({"grid": {"alpha": lo / 2}}).status_code == 400
+
+
+def test_request_before_init_returns_503(monkeypatch):
+    monkeypatch.setattr(score, "_MODEL", None)
+    monkeypatch.setattr(score, "AMLResponse", _FakeAMLResponse)
+    resp = score.run({"inputs": [[0.5, 0.5, 0.05]]})
+    assert resp.status_code == 503
+
+
+def test_valid_request_returns_plain_dict(tmp_path, monkeypatch):
+    _init_with_tiny_model(tmp_path, monkeypatch)
+    monkeypatch.setattr(score, "AMLResponse", _FakeAMLResponse)
+    resp = score.run({"inputs": [[0.5, 0.0, 0.05]]})
+    assert isinstance(resp, dict)
+    assert "predictions" in resp
