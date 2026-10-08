@@ -30,7 +30,7 @@
 ```powershell
 cd python
 uv sync --group mlops
-uv run --group mlops pytest -m "not slow"                       # 46 tests
+uv run --group mlops pytest -m "not slow"                       # 59 tests
 uv run --group mlops python mlops/train_entry.py --epochs 20000 # train + log to ./mlruns
 uv run --group mlops python mlops/gate.py --model-dir outputs/<run-dir>
 ```
@@ -370,7 +370,7 @@ PDE-solver/
 │  ├─ mlops/          # MLOps logic: train_entry, gate, test_set, serialization, score, logging_utils
 │  ├─ scripts/        # parity-vector generation, Burgers refinement, Docker smoke test
 │  ├─ figures/        # generated study plots (e.g. convergence.png)
-│  └─ pytests/        # 47 tests – core + MLOps, all offline (Azure SDK mocked); 46 fast + 1 slow accuracy regression
+│  └─ pytests/        # 60 tests – core + MLOps, all offline (Azure SDK mocked); 59 fast + 1 slow accuracy regression
 ├─ mlops/             # Azure ML assets: environment + job + endpoint + deployment YAML, runbook
 ├─ frontend/          # React + TypeScript web inference
 └─ docs/              # screenshots and endpoint consumption examples
