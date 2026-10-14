@@ -1,2 +1,6 @@
 allowBuilds:
   es5-ext: true
+
+updateConfig:
+  ignoreDependencies:
+    - typescript
